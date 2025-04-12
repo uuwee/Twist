@@ -1,0 +1,1 @@
+msbuild ./build_projects/Twist.sln /p:Configuration=Debug /p:Platform=x64
