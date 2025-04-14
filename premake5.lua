@@ -14,7 +14,7 @@ project "Twist"
     includedirs {"src", "third_party"}
 
     files {
-        "src/**",
+        "src/*",
         "third_party/**",
     }
 
@@ -26,7 +26,7 @@ project "Twist"
     }
 
     filter "configurations:Debug"
-    symbols "On"
+        symbols "On"
 
-	-- filter "configurations:Release"
-	-- 	optimize "On"
+	filter "configurations:Release"
+		optimize "On"
