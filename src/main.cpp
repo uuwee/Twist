@@ -86,10 +86,15 @@ int main() {
     SDL_Surface* draw_surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     SDL_SetSurfaceBlendMode(draw_surface, SDL_BLENDMODE_NONE);
 
-    std::vector<glm::vec3> vertices = {
-        {100.f, 100.f, 0.f},
-        {200.f, 100.f, 0.f},
-        {100.f, 200.f, 0.f},
+    Mesh mesh = {
+        .vertex = {
+            {100.f, 100.f, 0.f},
+            {100.f, 200.f, 0.f},
+            {200.f, 100.f, 0.f},
+        },
+        .index = {
+            0, 1, 2,
+        },
     };
     
     R8G8B8A8_U clear_color = {255, 200, 200, 255};
@@ -143,16 +148,40 @@ int main() {
         std::fill_n((R8G8B8A8_U*) draw_surface->pixels, width * height, clear_color);
         
         // draw
-        std::for_each(std::execution::par_unseq, pixel_indices, pixel_indices + width * height, [&draw_surface, &clear_color, &vertices](int idx){
+        std::for_each(std::execution::par_unseq, pixel_indices, pixel_indices + width * height, [&draw_surface, &clear_color, &mesh](int idx){
             int s = idx % width;
             int t = idx / width;
 
-            ((R8G8B8A8_U*)draw_surface->pixels)[idx] = to_color4ub(glm::vec4(
-                static_cast<float>(s) / width,
-                static_cast<float>(t) / height,
-                0.5f,
-                1.0f
-            ));
+            for (std::uint32_t vert_idx = 0; vert_idx +2 < mesh.vertex.size(); vert_idx += 3) {
+                auto v0 = mesh.vertex[mesh.index[vert_idx + 0]];
+                auto v1 = mesh.vertex[mesh.index[vert_idx + 1]];
+                auto v2 = mesh.vertex[mesh.index[vert_idx + 2]];
+
+                // barycentric coordinates
+                float alpha = ((v1.y - v2.y) * (s - v2.x) + (v2.x - v1.x) * (t - v2.y)) / ((v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y));
+                float beta = ((v2.y - v0.y) * (s - v2.x) + (v0.x - v2.x) * (t - v2.y)) / ((v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y));
+                float gamma = 1.0f - alpha - beta;
+
+                if (alpha < 0 || beta < 0 || gamma < 0) continue;
+
+                // interpolate color
+                auto color = glm::vec4(
+                    alpha,
+                    beta,
+                    gamma,
+                    1.f
+                );
+                
+                // draw pixel
+                ((R8G8B8A8_U*)draw_surface->pixels)[idx] = to_color4ub(color);
+            }
+
+            // ((R8G8B8A8_U*)draw_surface->pixels)[idx] = to_color4ub(glm::vec4(
+            //     static_cast<float>(s) / width,
+            //     static_cast<float>(t) / height,
+            //     0.5f,
+            //     1.0f
+            // ));
         });
 
         SDL_Rect rect{
