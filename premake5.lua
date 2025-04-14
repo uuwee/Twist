@@ -18,6 +18,13 @@ project "Twist"
         "third_party/**",
     }
 
+    includedirs {"%VULKAN_SDK%/Include/SDL2"}
+
+    links {
+        "%VULKAN_SDK%/Lib/SDL2main.lib", 
+        "%VULKAN_SDK%/Lib/SDL2.lib"
+    }
+
     filter "configurations:Debug"
     symbols "On"
 
