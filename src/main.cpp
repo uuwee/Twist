@@ -88,14 +88,34 @@ int main() {
 
     Mesh mesh = {
         .vertex = {
-            {100.f, 100.f, 0.f},
-            {100.f, 200.f, 0.f},
-            {200.f, 100.f, 0.f},
+            {-0.5f, -0.5f, -0.5f},
+            { 0.5f, -0.5f, -0.5f},
+            { 0.5f,  0.5f, -0.5f},
+            {-0.5f,  0.5f, -0.5f},
+            {-0.5f, -0.5f,  0.5f},
+            { 0.5f, -0.5f,  0.5f},
+            { 0.5f,  0.5f,  0.5f},
+            {-0.5f,  0.5f,  0.5f},
         },
         .index = {
             0, 1, 2,
+            0, 2, 3,
+            4, 5, 6,
+            4, 6, 7,
+            0, 1, 5,
+            0, 5, 4,
+            1, 2, 6,
+            1, 6, 5,
+            2, 3, 7,
+            2, 7, 6,
+            3, 0, 4,
+            3, 4, 7
         },
     };
+    glm::mat4 model_matrix = glm::identity<glm::mat4>();
+    glm::mat4 view_matrix = glm::identity<glm::mat4>();
+    glm::mat4 projection_matrix = glm::perspective(glm::radians(45.f), static_cast<float>(width) / height, 0.1f, 100.f);
+    projection_matrix[1][1] *= -1.f; // flip y axis
     
     R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -109,6 +129,9 @@ int main() {
     // state
     bool running = true;
     bool dump_image = false;
+
+    glm::vec3 camera_pos = {0.f, 0.f, -1.f};
+    float y_rotation = 0.f;
 
     while(running) {
         for (SDL_Event event; SDL_PollEvent(&event); ) switch (event.type)
@@ -125,6 +148,24 @@ int main() {
             case SDL_KeyCode::SDLK_p:
                 // dump_surface_to_ppm(*draw_surface);
                 dump_image = true;
+                break;
+            case SDL_KeyCode::SDLK_w:
+                camera_pos.y += 0.1f;
+                break;
+            case SDL_KeyCode::SDLK_s:
+                camera_pos.y -= 0.1f;
+                break;
+            case SDL_KeyCode::SDLK_a:
+                camera_pos.x -= 0.1f;
+                break;
+            case SDL_KeyCode::SDLK_d:
+                camera_pos.x += 0.1f;
+                break;
+            case SDL_KeyCode::SDLK_q:
+                camera_pos.z -= 0.1f;
+                break;
+            case SDL_KeyCode::SDLK_e:
+                camera_pos.z += 0.1f;
                 break;
             
             default:
@@ -143,26 +184,54 @@ int main() {
 
         // std::cout << "delta_time: " << delta_time << std::endl;
         std::cout << "FPS: " << 1.0f / delta_time << std::endl;
+
+        // update camera
+        // auto view_matrix = glm::translate(glm::identity<glm::mat4>(), -camera_pos);
+        auto view_matrix = glm::lookAt(
+            camera_pos,
+            glm::vec3(0.f, 0.f, 0.f),
+            glm::vec3(0.f, 1.f, 0.f)
+        );
+        auto rotation_matrix = glm::rotate(glm::identity<glm::mat4>(), y_rotation, glm::vec3(0.f, 1.f, 0.f));
+        y_rotation += delta_time * 0.5f; // rotate 0.5 radian per second
+        auto mvp_matrix = projection_matrix * view_matrix * rotation_matrix * model_matrix;
         
         // clear color
         std::fill_n((R8G8B8A8_U*) draw_surface->pixels, width * height, clear_color);
         
         // draw
-        std::for_each(std::execution::par_unseq, pixel_indices, pixel_indices + width * height, [&draw_surface, &clear_color, &mesh](int idx){
-            int s = idx % width;
-            int t = idx / width;
+        std::for_each(std::execution::par_unseq, pixel_indices, pixel_indices + width * height, [&draw_surface, &clear_color, &mesh, mvp_matrix](int idx){
+            const int s = idx % width;
+            const int t = idx / width;
+            const float u = static_cast<float>(s) / width * 2.f - 1.f;
+            const float v = static_cast<float>(t) / height * 2.f - 1.f;
 
-            for (std::uint32_t vert_idx = 0; vert_idx +2 < mesh.vertex.size(); vert_idx += 3) {
-                auto v0 = mesh.vertex[mesh.index[vert_idx + 0]];
-                auto v1 = mesh.vertex[mesh.index[vert_idx + 1]];
-                auto v2 = mesh.vertex[mesh.index[vert_idx + 2]];
+            for (std::uint32_t vert_idx = 0; vert_idx + 2 < mesh.index.size(); vert_idx += 3) {
+                auto v0 = mvp_matrix * glm::vec4(mesh.vertex[mesh.index[vert_idx + 0]], 1.f);
+                auto v1 = mvp_matrix * glm::vec4(mesh.vertex[mesh.index[vert_idx + 1]], 1.f);
+                auto v2 = mvp_matrix * glm::vec4(mesh.vertex[mesh.index[vert_idx + 2]], 1.f);
 
-                // barycentric coordinates
-                float alpha = ((v1.y - v2.y) * (s - v2.x) + (v2.x - v1.x) * (t - v2.y)) / ((v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y));
-                float beta = ((v2.y - v0.y) * (s - v2.x) + (v0.x - v2.x) * (t - v2.y)) / ((v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y));
-                float gamma = 1.0f - alpha - beta;
+                v0 /= v0.w; v1 /= v1.w; v2 /= v2.w;
 
-                if (alpha < 0 || beta < 0 || gamma < 0) continue;
+                glm::vec4 p = glm::vec4(u, v, 0.f, 0.f);
+                auto det = [](glm::vec4 a, glm::vec4 b) {
+                    return a.x * b.y - a.y * b.x;
+                };
+                glm::vec4 b = glm::vec4(
+                    det(v1 - v0, p - v0),
+                    det(v2 - v1, p - v1),
+                    det(v0 - v2, p - v2),
+                    0.f
+                );
+                float area = glm::dot(b, glm::vec4(1.f, 1.f, 1.f, 0.f));
+                // if (area < 0.f) continue; // backface culling
+                b /= area; // barycentric coordinates
+                float alpha = b.x;
+                float beta = b.y;
+                float gamma = b.z;
+                // if (alpha > 1.f || beta > 1.f || gamma > 1.f) continue;
+                if (alpha < 0.f || beta < 0.f || gamma < 0.f) continue;
+
 
                 // interpolate color
                 auto color = glm::vec4(
