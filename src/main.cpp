@@ -39,13 +39,13 @@ enum class CullMode{
 struct Vertex{
     glm::vec4 position;
     // glm::vec3 normal;
-    // glm::vec2 texcoord0;
+    glm::vec2 texcoord0;
 };
 
 struct Mesh {
     std::vector<glm::vec3> vertex;
     // std::vector<glm::vec3> normal;
-    // std::vector<glm::vec2> texcoord0;
+    std::vector<glm::vec2> texcoord0;
     std::vector<std::uint32_t> index;
 };
 
@@ -106,7 +106,7 @@ Vertex clip_intersect_edge(Vertex const & v0, Vertex const & v1, float value0, f
     Vertex v;
     v.position = (1.f - t) * v0.position + t * v1.position;
     // v.normal = (1.f - t) * v0.normal + t * v1.normal;
-    // v.texcoord0 = (1.f - t) * v0.texcoord0 + t * v1.texcoord0;
+    v.texcoord0 = (1.f - t) * v0.texcoord0 + t * v1.texcoord0;
 
     return v;
 }
@@ -245,36 +245,36 @@ void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewP
         vertices[0] = Vertex{
             .position = command.transform * glm::vec4(command.mesh->vertex[i0], 1.0), 
             // .normal = command.mesh->normal[i0], 
-            // .texcoord0 = command.mesh->texcoord0[i0]
+            .texcoord0 = command.mesh->texcoord0[i0]
         };
         vertices[1] = Vertex{
             .position = command.transform * glm::vec4(command.mesh->vertex[i1], 1.0), 
             // .normal = command.mesh->normal[i1], 
-            // .texcoord0 = command.mesh->texcoord0[i1]
+            .texcoord0 = command.mesh->texcoord0[i1]
         };
         vertices[2] = Vertex{
             .position = command.transform * glm::vec4(command.mesh->vertex[i2], 1.0), 
             // .normal = command.mesh->normal[i2], 
-            // .texcoord0 = command.mesh->texcoord0[i2]
+            .texcoord0 = command.mesh->texcoord0[i2]
         };
 
         // this clipping algorithm is taken from https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html#section-clipping-triangles-implementation
         auto end = clip_triangle(vertices, vertices + 3);
 
         for (auto triangle_begin = vertices; triangle_begin < end; triangle_begin += 3){
-            glm::vec4 v0 = triangle_begin[0].position;
-            glm::vec4 v1 = triangle_begin[1].position;
-            glm::vec4 v2 = triangle_begin[2].position;
+            Vertex v0 = triangle_begin[0];
+            Vertex v1 = triangle_begin[1];
+            Vertex v2 = triangle_begin[2];
             
-            v0 = perspective_divide(v0);
-            v1 = perspective_divide(v1);
-            v2 = perspective_divide(v2);
+            v0.position = perspective_divide(v0.position);
+            v1.position = perspective_divide(v1.position);
+            v2.position = perspective_divide(v2.position);
 
-            v0 = apply(viewport, v0);
-            v1 = apply(viewport, v1);
-            v2 = apply(viewport, v2);
+            v0.position = apply(viewport, v0.position);
+            v1.position = apply(viewport, v1.position);
+            v2.position = apply(viewport, v2.position);
 
-            float det012 = det(v1.xy - v0.xy, v2.xy - v0.xy);
+            float det012 = det(v1.position.xy - v0.position.xy, v2.position.xy - v0.position.xy);
 
             const bool is_ccw = det012 < 0.f;
             switch (command.cull_mode) 
@@ -305,10 +305,10 @@ void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewP
             std::int32_t ymin = std::max<std::int32_t>(viewport.y, 0);
             std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, height)-1;
 
-            xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.x), std::floor(v1.x), std::floor(v2.x)})));  
-            xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.x), std::ceil(v1.x), std::ceil(v2.x)})));
-            ymin = static_cast<int32_t>(std::max<float>(static_cast<float>(ymin), std::min({ std::floor(v0.y), std::floor(v1.y), std::floor(v2.y)})));
-            ymax = static_cast<int32_t>(std::min<float>(static_cast<float>(ymax), std::max({ std::ceil(v0.y), std::ceil(v1.y), std::ceil(v2.y)})));
+            xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.position.x), std::floor(v1.position.x), std::floor(v2.position.x)})));  
+            xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.position.x), std::ceil(v1.position.x), std::ceil(v2.position.x)})));
+            ymin = static_cast<int32_t>(std::max<float>(static_cast<float>(ymin), std::min({ std::floor(v0.position.y), std::floor(v1.position.y), std::floor(v2.position.y)})));
+            ymax = static_cast<int32_t>(std::min<float>(static_cast<float>(ymax), std::max({ std::ceil(v0.position.y), std::ceil(v1.position.y), std::ceil(v2.position.y)})));
 
             for (std::int32_t y = ymin; y < ymax; y++){
                 for (std::int32_t x = xmin; x < xmax; x++){
@@ -316,20 +316,27 @@ void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewP
                         x+0.5f, y+ 0.5f, 0.f, 0.f
                     );
 
-                    float det01p = det(v1.xy - v0.xy, p.xy - v0.xy);
-                    float det12p = det(v2.xy - v1.xy, p.xy - v1.xy);
-                    float det20p = det(v0.xy - v2.xy, p.xy - v2.xy);
+                    float det01p = det(v1.position.xy - v0.position.xy, p.xy - v0.position.xy);
+                    float det12p = det(v2.position.xy - v1.position.xy, p.xy - v1.position.xy);
+                    float det20p = det(v0.position.xy - v2.position.xy, p.xy - v2.position.xy);
                     
 
                     if (det01p >= 0.f && det12p >= 0.f && det20p >= 0.f) {
-                        float l0 = det12p / det012 * v0.w;
-                        float l1 = det20p / det012 * v1.w;
-                        float l2 = det01p / det012 * v2.w;
+                        float l0 = det12p / det012 * v0.position.w;
+                        float l1 = det20p / det012 * v1.position.w;
+                        float l2 = det01p / det012 * v2.position.w;
                         float lsum = l0 + l1 + l2;
                         l0 /= lsum;
                         l1 /= lsum;
                         l2 /= lsum;
-                        color_buffer->at(x, y) = to_r8g8b8a8_u(glm::vec4(l0, l1, l2, 1.f));
+
+                        glm::vec2 texcoord = l0 * v0.texcoord0 + l1 * v1.texcoord0 + l2 * v2.texcoord0;
+                        glm::vec4 color = glm::vec4(texcoord.x , texcoord.y, 0.f, 1.f);
+                        if (int(std::floor(color.x * 8) + std::floor(color.y * 8)) % 2 == 0)
+                            color_buffer->at(x, y) = {0, 0, 0, 255};
+                        else
+                            color_buffer->at(x, y) = {255, 255, 255, 255};
+                        // color_buffer->at(x, y) = to_r8g8b8a8_u(color);
                     }
                 }
             }
@@ -429,6 +436,14 @@ int main() {
             { 1.f, -1.f,  1.f},
             {-1.f,  1.f,  1.f},
             { 1.f,  1.f,  1.f},
+        },
+        .texcoord0 = {
+            {0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f},
+            {0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f},
+            {0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f},
+            {0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f},
+            {0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f},
+            {0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f},
         },
         .index = {
             // -X face
