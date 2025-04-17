@@ -229,6 +229,11 @@ Vertex * clip_triangle(Vertex* begin, Vertex* end)
     return end;
 }
 
+inline glm::vec4 perspective_divide(glm::vec4 const& v) {
+    auto w = 1.f / v.w;
+    return glm::vec4(v.x * w, v.y * w, v.z * w, w);
+}
+
 template<std::uint32_t width, std::uint32_t height>
 void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewPort const& viewport = {0, 0, width, height}) {
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.mesh->index.size(); idx_idx+= 3){
@@ -252,15 +257,18 @@ void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewP
             // .normal = command.mesh->normal[i2], 
             // .texcoord0 = command.mesh->texcoord0[i2]
         };
+
+        // this clipping algorithm is taken from https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html#section-clipping-triangles-implementation
         auto end = clip_triangle(vertices, vertices + 3);
-        for (auto triangle_begin = vertices; triangle_begin != end; triangle_begin += 3){
+
+        for (auto triangle_begin = vertices; triangle_begin < end; triangle_begin += 3){
             glm::vec4 v0 = triangle_begin[0].position;
             glm::vec4 v1 = triangle_begin[1].position;
             glm::vec4 v2 = triangle_begin[2].position;
             
-            v0 = glm::vec4(glm::vec3(v0.xyz) / v0.w, v0.w);
-            v1 = glm::vec4(glm::vec3(v1.xyz) / v1.w, v1.w);
-            v2 = glm::vec4(glm::vec3(v2.xyz) / v2.w, v2.w);
+            v0 = perspective_divide(v0);
+            v1 = perspective_divide(v1);
+            v2 = perspective_divide(v2);
 
             v0 = apply(viewport, v0);
             v1 = apply(viewport, v1);
@@ -292,28 +300,28 @@ void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewP
                 break;
             }
 
-            std::uint32_t xmin = std::max<std::uint32_t>(viewport.x, 0);
-            std::uint32_t xmax = std::min<std::uint32_t>(viewport.x + viewport.width, width)-1;
-            std::uint32_t ymin = std::max<std::uint32_t>(viewport.y, 0);
-            std::uint32_t ymax = std::min<std::uint32_t>(viewport.y + viewport.height, height)-1;
+            std::int32_t xmin = std::max<std::int32_t>(viewport.x, 0);
+            std::int32_t xmax = std::min<std::int32_t>(viewport.x + viewport.width, width)-1;
+            std::int32_t ymin = std::max<std::int32_t>(viewport.y, 0);
+            std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, height)-1;
 
-            xmin = std::max(xmin, std::min({ static_cast<std::uint32_t>(std::floor(v0.x)), static_cast<std::uint32_t>(std::floor(v1.x)), static_cast<std::uint32_t>(std::floor(v2.x))}));  
-            xmax = std::min(xmax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.x)), static_cast<std::uint32_t>(std::ceil(v1.x)), static_cast<std::uint32_t>(std::ceil(v2.x))}));
-            ymin = std::max(ymin, std::min({ static_cast<std::uint32_t>(std::floor(v0.y)), static_cast<std::uint32_t>(std::floor(v1.y)), static_cast<std::uint32_t>(std::floor(v2.y))}));
-            ymax = std::min(ymax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.y)), static_cast<std::uint32_t>(std::ceil(v1.y)), static_cast<std::uint32_t>(std::ceil(v2.y))}));
+            xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.x), std::floor(v1.x), std::floor(v2.x)})));  
+            xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.x), std::ceil(v1.x), std::ceil(v2.x)})));
+            ymin = static_cast<int32_t>(std::max<float>(static_cast<float>(ymin), std::min({ std::floor(v0.y), std::floor(v1.y), std::floor(v2.y)})));
+            ymax = static_cast<int32_t>(std::min<float>(static_cast<float>(ymax), std::max({ std::ceil(v0.y), std::ceil(v1.y), std::ceil(v2.y)})));
 
-            for (std::uint32_t y = ymin; y < ymax; y++){
-                for (std::uint32_t x = xmin; x < xmax; x++){
-                    glm::vec4 p = {
-                        x+0.5f, y+ 0.5f, 0.f, 1.f
-                    };
+            for (std::int32_t y = ymin; y < ymax; y++){
+                for (std::int32_t x = xmin; x < xmax; x++){
+                    glm::vec4 p = glm::vec4(
+                        x+0.5f, y+ 0.5f, 0.f, 0.f
+                    );
 
                     float det01p = det(v1.xy - v0.xy, p.xy - v0.xy);
                     float det12p = det(v2.xy - v1.xy, p.xy - v1.xy);
                     float det20p = det(v0.xy - v2.xy, p.xy - v2.xy);
                     
 
-                    if (det01p > 0.f && det12p > 0.f && det20p > 0.f) {
+                    if (det01p >= 0.f && det12p >= 0.f && det20p >= 0.f) {
                         float l0 = det12p / det012 * v0.w;
                         float l1 = det20p / det012 * v1.w;
                         float l2 = det01p / det012 * v2.w;
@@ -386,28 +394,66 @@ int main() {
 
     Mesh mesh = {
         .vertex = {
-            {-0.5f, -0.5f, -0.5f},
-            {-0.5f,  0.5f, -0.5f},
-            { 0.5f, -0.5f, -0.5f},
-            { 0.5f,  0.5f, -0.5f},
-            {-0.5f, -0.5f, 0.5f},
-            {-0.5f,  0.5f, 0.5f},
-            { 0.5f, -0.5f, 0.5f},
-            { 0.5f,  0.5f, 0.5f},
+            // -X face
+            {-1.f, -1.f, -1.f},
+            {-1.f,  1.f, -1.f},
+            {-1.f, -1.f,  1.f},
+            {-1.f,  1.f,  1.f},
+
+            // +X face
+            { 1.f, -1.f, -1.f},
+            { 1.f,  1.f, -1.f},
+            { 1.f, -1.f,  1.f},
+            { 1.f,  1.f,  1.f},
+
+            // -Y face
+            {-1.f, -1.f, -1.f},
+            { 1.f, -1.f, -1.f},
+            {-1.f, -1.f,  1.f},
+            { 1.f, -1.f,  1.f},
+
+            // +Y face
+            {-1.f,  1.f, -1.f},
+            { 1.f,  1.f, -1.f},
+            {-1.f,  1.f,  1.f},
+            { 1.f,  1.f,  1.f},
+
+            // -Z face
+            {-1.f, -1.f, -1.f},
+            { 1.f, -1.f, -1.f},
+            {-1.f,  1.f, -1.f},
+            { 1.f,  1.f, -1.f},
+
+            // +Z face
+            {-1.f, -1.f,  1.f},
+            { 1.f, -1.f,  1.f},
+            {-1.f,  1.f,  1.f},
+            { 1.f,  1.f,  1.f},
         },
         .index = {
-            0, 1, 2,
-            1, 3, 2,
-            4, 5, 6,
-            5, 7, 6,
-            0, 1, 4,
-            1, 5, 4,
-            2, 3, 6,
-            3, 7, 6,
-            0, 2, 4,
-            2, 6, 4,
-            1, 3, 5,
-            3, 7, 5,
+            // -X face
+            0,  2,  1,
+            1,  2,  3,
+
+            // +X face
+            4,  5,  6,
+            6,  5,  7,
+
+            // -Y face
+            8,  9, 10,
+            10,  9, 11,
+
+            // +Y face
+            12, 14, 13,
+            14, 15, 13,
+
+            // -Z face
+            16, 18, 17,
+            17, 18, 19,
+
+            // +Z face
+            20, 21, 22,
+            21, 23, 22,
         },
     };
     
