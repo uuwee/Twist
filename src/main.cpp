@@ -1,4 +1,5 @@
 #include "tinygltf/tiny_gltf.h"
+#define GLM_FORCE_SWIZZLE
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 
@@ -12,14 +13,17 @@
 #include <chrono>
 #include <algorithm>
 #include <execution>
+#include <cstdint>
+#include <memory>
+#include <initializer_list>
 
 struct R8G8B8A8_U{
     std::uint8_t r, g, b, a;
 };
-static inline uint32_t ToUint32(R8G8B8A8_U color) {
+static inline std::uint32_t ToUint32(R8G8B8A8_U color) {
     return color.r << 24 | color.g << 16 | color.b << 8 | color.a << 0;
 }
-static inline R8G8B8A8_U to_color4ub(glm::vec4 const & color) {
+static inline R8G8B8A8_U to_r8g8b8a8_u(glm::vec4 const & color) {
     return {
         .r = (uint8_t)std::max(0.f, std::min(255.f, color.x * 255.f)),
         .g = (uint8_t)std::max(0.f, std::min(255.f, color.y * 255.f)),
@@ -32,10 +36,99 @@ struct Mesh {
     std::vector<glm::vec3> vertex;
     std::vector<glm::vec3> normal;
     std::vector<glm::vec2> texcoord0;
-    std::vector<uint32_t> index;
+    std::vector<std::uint32_t> index;
 };
 
-uint32_t bits_reverse( uint32_t v )
+struct ViewPort{
+    std::uint32_t x, y, width, height;
+};
+glm::vec4 apply(ViewPort const& vp, glm::vec4 const& vertex) {
+    const float fx = static_cast<float>(vp.x);
+    const float fy = static_cast<float>(vp.y);
+    const float fw = static_cast<float>(vp.width);
+    const float fh = static_cast<float>(vp.height);
+
+    const float ndcX = vertex.x;          // [-1, +1]
+    const float ndcY = vertex.y;          // [-1, +1]
+
+    const float winX = (ndcX + 1.0f) * 0.5f * fw + fx;
+    const float winY = (1.0f - ndcY) * 0.5f * fh + fy;
+
+    return{
+        winX, winY, vertex.z, vertex.w
+    };
+}
+
+struct DrawCall {
+    Mesh* mesh = nullptr;
+    glm::mat4 transform = glm::identity<glm::mat4>();
+};
+
+template<std::uint32_t width, std::uint32_t height>
+struct ImageView{
+    std::array<R8G8B8A8_U, width * height>* image = nullptr;
+
+    R8G8B8A8_U& at(std::uint32_t x, std::uint32_t y) {
+        return image->data()[y * width + x];
+    }
+};
+
+template<std::uint32_t width, std::uint32_t height>
+void clear(ImageView<width, height>& image_view, R8G8B8A8_U color) {
+    std::fill_n(image_view.image->data(), width * height, color);
+}
+
+float det(glm::vec2 const& a, glm::vec2 const& b) {
+    return a.x * b.y - a.y * b.x;
+}
+
+template<std::uint32_t width, std::uint32_t height>
+void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewPort const& viewport = {0, 0, width, height}) {
+    for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.mesh->index.size(); idx_idx+= 3){
+        glm::vec4 v0 = command.transform * glm::vec4(command.mesh->vertex[command.mesh->index[idx_idx + 0]], 1.f);
+        glm::vec4 v1 = command.transform * glm::vec4(command.mesh->vertex[command.mesh->index[idx_idx + 1]], 1.f);
+        glm::vec4 v2 = command.transform * glm::vec4(command.mesh->vertex[command.mesh->index[idx_idx + 2]], 1.f);
+        
+        v0 = apply(viewport, v0);
+        v1 = apply(viewport, v1);
+        v2 = apply(viewport, v2);
+
+        std::uint32_t xmin = std::max<std::uint32_t>(viewport.x, 0);
+        std::uint32_t xmax = std::min<std::uint32_t>(viewport.x + viewport.width, width)-1;
+        std::uint32_t ymin = std::max<std::uint32_t>(viewport.y, 0);
+        std::uint32_t ymax = std::min<std::uint32_t>(viewport.y + viewport.height, height)-1;
+
+        xmin = std::max(xmin, std::min({ static_cast<std::uint32_t>(std::floor(v0.x)), static_cast<std::uint32_t>(std::floor(v1.x)), static_cast<std::uint32_t>(std::floor(v2.x))}));  
+        xmax = std::min(xmax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.x)), static_cast<std::uint32_t>(std::ceil(v1.x)), static_cast<std::uint32_t>(std::ceil(v2.x))}));
+        ymin = std::max(ymin, std::min({ static_cast<std::uint32_t>(std::floor(v0.y)), static_cast<std::uint32_t>(std::floor(v1.y)), static_cast<std::uint32_t>(std::floor(v2.y))}));
+        ymax = std::min(ymax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.y)), static_cast<std::uint32_t>(std::ceil(v1.y)), static_cast<std::uint32_t>(std::ceil(v2.y))}));
+
+        for (std::uint32_t y = ymin; y < ymax; y++){
+            for (std::uint32_t x = xmin; x < xmax; x++){
+                glm::vec4 p = {
+                    x+0.5f, y+ 0.5f, 0.f, 1.f
+                };
+
+                float det01p = det(v1.xy - v0.xy, p.xy - v0.xy);
+                float det12p = det(v2.xy - v1.xy, p.xy - v1.xy);
+                float det20p = det(v0.xy - v2.xy, p.xy - v2.xy);
+                float det012 = det(v1.xy - v0.xy, v2.xy - v0.xy);
+
+                const bool is_ccw_tri = det012 < 0.f;
+                
+                if (det01p >= 0.f && det12p >= 0.f && det20p >= 0.f) {
+                    float l0 = det12p / det012;
+                    float l1 = det20p / det012;
+                    float l2 = det01p / det012;
+
+                    color_buffer->at(x, y) = to_r8g8b8a8_u(glm::vec4(l0, l1, l2, 1.f));
+                }
+            }
+        }
+    }
+}
+
+std::uint32_t bits_reverse( std::uint32_t v )
 {
     v = (v & 0x55555555) <<  1 | (v >>  1 & 0x55555555);
     v = (v & 0x33333333) <<  2 | (v >>  2 & 0x33333333);
@@ -55,13 +148,13 @@ void dump_surface_to_ppm(SDL_Surface const& surface){
 
     /*
     CAUTION:
-    We input R8G8B8A8, but SDL_Surface.pixels is sumehow ABGR8G8R8*.
+    We input R8G8B8A8, but SDL_Surface.pixels is somehow ABGR8G8R8*.
     */
 
     out_File << "P3\n" << surface.w << " " << surface.h << "\n255\n";
     for (int y = 0; y < surface.h; ++y) {
         for (int x = 0; x < surface.w; ++x) {
-            uint32_t pixel = ((uint32_t*)surface.pixels)[y * surface.w + x];
+            std::uint32_t pixel = ((std::uint32_t*)surface.pixels)[y * surface.w + x];
             uint8_t r = (pixel >> 0) & 0xFF;
             uint8_t g = (pixel >> 8) & 0xFF;
             uint8_t b = (pixel >> 16) & 0xFF;
@@ -86,30 +179,18 @@ int main() {
     SDL_Surface* draw_surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     SDL_SetSurfaceBlendMode(draw_surface, SDL_BLENDMODE_NONE);
 
+    ImageView<width, height> render_target_view = {
+        .image = reinterpret_cast<std::array<R8G8B8A8_U, width * height>*>(draw_surface->pixels),
+    };
+
     Mesh mesh = {
         .vertex = {
-            {-0.5f, -0.5f, -0.5f},
-            { 0.5f, -0.5f, -0.5f},
-            { 0.5f,  0.5f, -0.5f},
-            {-0.5f,  0.5f, -0.5f},
-            {-0.5f, -0.5f,  0.5f},
-            { 0.5f, -0.5f,  0.5f},
-            { 0.5f,  0.5f,  0.5f},
-            {-0.5f,  0.5f,  0.5f},
+            { 0.f,   0.5f, 0.f},
+            { 0.5f, -0.5f, 0.f},
+            {-0.5f, -0.5f, 0.f},
         },
         .index = {
             0, 1, 2,
-            0, 2, 3,
-            4, 5, 6,
-            4, 6, 7,
-            0, 1, 5,
-            0, 5, 4,
-            1, 2, 6,
-            1, 6, 5,
-            2, 3, 7,
-            2, 7, 6,
-            3, 0, 4,
-            3, 4, 7
         },
     };
     glm::mat4 model_matrix = glm::identity<glm::mat4>();
@@ -118,10 +199,6 @@ int main() {
     projection_matrix[1][1] *= -1.f; // flip y axis
     
     R8G8B8A8_U clear_color = {255, 200, 200, 255};
-
-    // pixel indices to be used in parallel for_each
-    int* pixel_indices = new int[width * height];
-    std::iota(pixel_indices, pixel_indices + width * height, 0);
 
     // timer
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -132,6 +209,7 @@ int main() {
 
     glm::vec3 camera_pos = {0.f, 0.f, -1.f};
     float y_rotation = 0.f;
+    glm::vec2 mouse_pos = {0.f, 0.f};
 
     while(running) {
         for (SDL_Event event; SDL_PollEvent(&event); ) switch (event.type)
@@ -171,6 +249,10 @@ int main() {
             default:
                 break;
             }
+        case SDL_MOUSEMOTION:
+            mouse_pos.x = static_cast<float>(event.motion.x);
+            mouse_pos.y = static_cast<float>(event.motion.y);
+            break;
         
         default:
             break;
@@ -184,73 +266,13 @@ int main() {
 
         // std::cout << "delta_time: " << delta_time << std::endl;
         std::cout << "FPS: " << 1.0f / delta_time << std::endl;
-
-        // update camera
-        // auto view_matrix = glm::translate(glm::identity<glm::mat4>(), -camera_pos);
-        auto view_matrix = glm::lookAt(
-            camera_pos,
-            glm::vec3(0.f, 0.f, 0.f),
-            glm::vec3(0.f, 1.f, 0.f)
-        );
-        auto rotation_matrix = glm::rotate(glm::identity<glm::mat4>(), y_rotation, glm::vec3(0.f, 1.f, 0.f));
-        y_rotation += delta_time * 0.5f; // rotate 0.5 radian per second
-        auto mvp_matrix = projection_matrix * view_matrix * rotation_matrix * model_matrix;
         
         // clear color
-        std::fill_n((R8G8B8A8_U*) draw_surface->pixels, width * height, clear_color);
-        
-        // draw
-        std::for_each(std::execution::par_unseq, pixel_indices, pixel_indices + width * height, [&draw_surface, &clear_color, &mesh, mvp_matrix](int idx){
-            const int s = idx % width;
-            const int t = idx / width;
-            const float u = static_cast<float>(s) / width * 2.f - 1.f;
-            const float v = static_cast<float>(t) / height * 2.f - 1.f;
+        clear(render_target_view, clear_color);  
 
-            for (std::uint32_t vert_idx = 0; vert_idx + 2 < mesh.index.size(); vert_idx += 3) {
-                auto v0 = mvp_matrix * glm::vec4(mesh.vertex[mesh.index[vert_idx + 0]], 1.f);
-                auto v1 = mvp_matrix * glm::vec4(mesh.vertex[mesh.index[vert_idx + 1]], 1.f);
-                auto v2 = mvp_matrix * glm::vec4(mesh.vertex[mesh.index[vert_idx + 2]], 1.f);
-
-                v0 /= v0.w; v1 /= v1.w; v2 /= v2.w;
-
-                glm::vec4 p = glm::vec4(u, v, 0.f, 0.f);
-                auto det = [](glm::vec4 a, glm::vec4 b) {
-                    return a.x * b.y - a.y * b.x;
-                };
-                glm::vec4 b = glm::vec4(
-                    det(v1 - v0, p - v0),
-                    det(v2 - v1, p - v1),
-                    det(v0 - v2, p - v2),
-                    0.f
-                );
-                float area = glm::dot(b, glm::vec4(1.f, 1.f, 1.f, 0.f));
-                // if (area < 0.f) continue; // backface culling
-                b /= area; // barycentric coordinates
-                float alpha = b.x;
-                float beta = b.y;
-                float gamma = b.z;
-                // if (alpha > 1.f || beta > 1.f || gamma > 1.f) continue;
-                if (alpha < 0.f || beta < 0.f || gamma < 0.f) continue;
-
-
-                // interpolate color
-                auto color = glm::vec4(
-                    alpha,
-                    beta,
-                    gamma,
-                    1.f
-                );
-                
-                // draw pixel
-                ((R8G8B8A8_U*)draw_surface->pixels)[idx] = to_color4ub(color);
-            }
-
-            // ((R8G8B8A8_U*)draw_surface->pixels)[idx] = to_color4ub(glm::vec4(
-            //     static_cast<float>(s) / width,
-            //     static_cast<float>(t) / height,
-            //     0.5f,
-            //     1.0f
-            // ));
+        draw(&render_target_view, {
+            .mesh = &mesh,
+            .transform = glm::identity<glm::mat4>(),
         });
 
         SDL_Rect rect{
@@ -264,28 +286,6 @@ int main() {
             dump_image = false;
         }
     };
-
-    // constexpr float max_value = 255.0;
-    // std::string header = "P3\n" + std::to_string(width) + " " + std::to_string(height) + "\n255\n";
-
-    // std::ofstream outFile("./bin/output.ppm");
-    // if (!outFile) {
-    //     std::cerr << "Error creating output file." << std::endl;
-    //     return 1;
-    // }
-    // outFile << header;
-    // for (int i = 0; i < height; ++i) {
-    //     for (int j = 0; j < width; ++j) {
-    //         int idx = i * width + j;
-    //         outFile << static_cast<int>(image[idx][0] / 1.0 * max_value)
-    //             << " " << static_cast<int>(image[idx][1] / 1.0 * max_value)
-    //             << " " << static_cast<int>(image[idx][2] / 1.0 * max_value) << "\n";
-    //     }
-    // }
-    // outFile.close();
-
-    delete [] pixel_indices;
-    // delete[] image;
 
     return 0;
 }
