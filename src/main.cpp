@@ -32,10 +32,20 @@ static inline R8G8B8A8_U to_r8g8b8a8_u(glm::vec4 const & color) {
     };
 }
 
+enum class CullMode{
+    NONE, CLOCK_WISE, COUNTER_CLOCK_WISE,
+};
+
+struct Vertex{
+    glm::vec4 position;
+    // glm::vec3 normal;
+    // glm::vec2 texcoord0;
+};
+
 struct Mesh {
     std::vector<glm::vec3> vertex;
-    std::vector<glm::vec3> normal;
-    std::vector<glm::vec2> texcoord0;
+    // std::vector<glm::vec3> normal;
+    // std::vector<glm::vec2> texcoord0;
     std::vector<std::uint32_t> index;
 };
 
@@ -60,6 +70,7 @@ glm::vec4 apply(ViewPort const& vp, glm::vec4 const& vertex) {
 }
 
 struct DrawCall {
+    CullMode cull_mode = CullMode::NONE;
     Mesh* mesh = nullptr;
     glm::mat4 transform = glm::identity<glm::mat4>();
 };
@@ -82,46 +93,236 @@ float det(glm::vec2 const& a, glm::vec2 const& b) {
     return a.x * b.y - a.y * b.x;
 }
 
+Vertex clip_intersect_edge(Vertex const & v0, Vertex const & v1, float value0, float value1)
+{
+    // f(t) = at+b
+    // f(0) = v0 = b
+    // f(1) = v1 = a+v0 => a = v1 - v0
+    // f(t) = v0 + (v1 - v0) * t
+    // f(t) = 0 => t = -v0 / (v1 - v0) = v0 / (v0 - v1)
+
+    float t = value0 / (value0 - value1);
+
+    Vertex v;
+    v.position = (1.f - t) * v0.position + t * v1.position;
+    // v.normal = (1.f - t) * v0.normal + t * v1.normal;
+    // v.texcoord0 = (1.f - t) * v0.texcoord0 + t * v1.texcoord0;
+
+    return v;
+}
+
+Vertex * clip_triangle(Vertex * triangle, glm::vec4 equation, Vertex * result)
+{
+    float values[3] =
+    {
+        glm::dot(triangle[0].position, equation),
+        glm::dot(triangle[1].position, equation),
+        glm::dot(triangle[2].position, equation),
+    };
+
+    std::uint8_t mask = (values[0] < 0.f ? 1 : 0) | (values[1] < 0.f ? 2 : 0) | (values[2] < 0.f ? 4 : 0);
+
+    switch (mask)
+    {
+    case 0b000:
+        // All vertices are inside allowed half-space
+        // No clipping required, copy the triangle to output
+        *result++ = triangle[0];
+        *result++ = triangle[1];
+        *result++ = triangle[2];
+        break;
+    case 0b001:
+        // Vertex 0 is outside allowed half-space
+        // Replace it with points on edges 01 and 02
+        // And re-triangulate
+        {
+            auto v01 = clip_intersect_edge(triangle[0], triangle[1], values[0], values[1]);
+            auto v02 = clip_intersect_edge(triangle[0], triangle[2], values[0], values[2]);
+            *result++ = v01;
+            *result++ = triangle[1];
+            *result++ = triangle[2];
+            *result++ = v01;
+            *result++ = triangle[2];
+            *result++ = v02;
+        }
+        break;
+    case 0b010:
+        // Vertex 1 is outside allowed half-space
+        // Replace it with points on edges 10 and 12
+        // And re-triangulate
+        {
+            auto v10 = clip_intersect_edge(triangle[1], triangle[0], values[1], values[0]);
+            auto v12 = clip_intersect_edge(triangle[1], triangle[2], values[1], values[2]);
+            *result++ = triangle[0];
+            *result++ = v10;
+            *result++ = triangle[2];
+            *result++ = triangle[2];
+            *result++ = v10;
+            *result++ = v12;
+        }
+        break;
+    case 0b011:
+        // Vertices 0 and 1 are outside allowed half-space
+        // Replace them with points on edges 02 and 12
+        *result++ = clip_intersect_edge(triangle[0], triangle[2], values[0], values[2]);
+        *result++ = clip_intersect_edge(triangle[1], triangle[2], values[1], values[2]);
+        *result++ = triangle[2];
+        break;
+    case 0b100:
+        // Vertex 2 is outside allowed half-space
+        // Replace it with points on edges 20 and 21
+        // And re-triangulate
+        {
+            auto v20 = clip_intersect_edge(triangle[2], triangle[0], values[2], values[0]);
+            auto v21 = clip_intersect_edge(triangle[2], triangle[1], values[2], values[1]);
+            *result++ = triangle[0];
+            *result++ = triangle[1];
+            *result++ = v20;
+            *result++ = v20;
+            *result++ = triangle[1];
+            *result++ = v21;
+        }
+        break;
+    case 0b101:
+        // Vertices 0 and 2 are outside allowed half-space
+        // Replace them with points on edges 01 and 21
+        *result++ = clip_intersect_edge(triangle[0], triangle[1], values[0], values[1]);
+        *result++ = triangle[1];
+        *result++ = clip_intersect_edge(triangle[2], triangle[1], values[2], values[1]);
+        break;
+    case 0b110:
+        // Vertices 1 and 2 are outside allowed half-space
+        // Replace them with points on edges 10 and 20
+        *result++ = triangle[0];
+        *result++ = clip_intersect_edge(triangle[1], triangle[0], values[1], values[0]);
+        *result++ = clip_intersect_edge(triangle[2], triangle[0], values[2], values[0]);
+        break;
+    case 0b111:
+        // All vertices are outside allowed half-space
+        // Clip the whole triangle, result is empty
+        break;
+    }
+
+    return result;
+}
+
+Vertex * clip_triangle(Vertex* begin, Vertex* end)
+{
+    static glm::vec4 const equations[2] =
+    {
+        {0.f, 0.f,  1.f, 1.f}, // Z > -W  =>   Z + W > 0
+        {0.f, 0.f, -1.f, 1.f}, // Z <  W  => - Z + W > 0
+    };
+
+    Vertex result[12];
+
+    for (auto equation : equations)
+    {
+        auto result_end = result;
+
+        for (Vertex* triangle = begin; triangle != end; triangle += 3)
+            result_end = clip_triangle(triangle, equation, result_end);
+
+        end = std::copy(result, result_end, begin);
+    }
+
+    return end;
+}
+
 template<std::uint32_t width, std::uint32_t height>
 void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewPort const& viewport = {0, 0, width, height}) {
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.mesh->index.size(); idx_idx+= 3){
-        glm::vec4 v0 = command.transform * glm::vec4(command.mesh->vertex[command.mesh->index[idx_idx + 0]], 1.f);
-        glm::vec4 v1 = command.transform * glm::vec4(command.mesh->vertex[command.mesh->index[idx_idx + 1]], 1.f);
-        glm::vec4 v2 = command.transform * glm::vec4(command.mesh->vertex[command.mesh->index[idx_idx + 2]], 1.f);
-        
-        v0 = apply(viewport, v0);
-        v1 = apply(viewport, v1);
-        v2 = apply(viewport, v2);
+        std::uint32_t i0 = command.mesh->index[idx_idx + 0];
+        std::uint32_t i1 = command.mesh->index[idx_idx + 1];
+        std::uint32_t i2 = command.mesh->index[idx_idx + 2];
 
-        std::uint32_t xmin = std::max<std::uint32_t>(viewport.x, 0);
-        std::uint32_t xmax = std::min<std::uint32_t>(viewport.x + viewport.width, width)-1;
-        std::uint32_t ymin = std::max<std::uint32_t>(viewport.y, 0);
-        std::uint32_t ymax = std::min<std::uint32_t>(viewport.y + viewport.height, height)-1;
+        Vertex vertices[12];
+        vertices[0] = Vertex{
+            .position = command.transform * glm::vec4(command.mesh->vertex[i0], 1.0), 
+            // .normal = command.mesh->normal[i0], 
+            // .texcoord0 = command.mesh->texcoord0[i0]
+        };
+        vertices[1] = Vertex{
+            .position = command.transform * glm::vec4(command.mesh->vertex[i1], 1.0), 
+            // .normal = command.mesh->normal[i1], 
+            // .texcoord0 = command.mesh->texcoord0[i1]
+        };
+        vertices[2] = Vertex{
+            .position = command.transform * glm::vec4(command.mesh->vertex[i2], 1.0), 
+            // .normal = command.mesh->normal[i2], 
+            // .texcoord0 = command.mesh->texcoord0[i2]
+        };
+        auto end = clip_triangle(vertices, vertices + 3);
+        for (auto triangle_begin = vertices; triangle_begin != end; triangle_begin += 3){
+            glm::vec4 v0 = triangle_begin[0].position;
+            glm::vec4 v1 = triangle_begin[1].position;
+            glm::vec4 v2 = triangle_begin[2].position;
+            
+            v0 = glm::vec4(glm::vec3(v0.xyz) / v0.w, v0.w);
+            v1 = glm::vec4(glm::vec3(v1.xyz) / v1.w, v1.w);
+            v2 = glm::vec4(glm::vec3(v2.xyz) / v2.w, v2.w);
 
-        xmin = std::max(xmin, std::min({ static_cast<std::uint32_t>(std::floor(v0.x)), static_cast<std::uint32_t>(std::floor(v1.x)), static_cast<std::uint32_t>(std::floor(v2.x))}));  
-        xmax = std::min(xmax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.x)), static_cast<std::uint32_t>(std::ceil(v1.x)), static_cast<std::uint32_t>(std::ceil(v2.x))}));
-        ymin = std::max(ymin, std::min({ static_cast<std::uint32_t>(std::floor(v0.y)), static_cast<std::uint32_t>(std::floor(v1.y)), static_cast<std::uint32_t>(std::floor(v2.y))}));
-        ymax = std::min(ymax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.y)), static_cast<std::uint32_t>(std::ceil(v1.y)), static_cast<std::uint32_t>(std::ceil(v2.y))}));
+            v0 = apply(viewport, v0);
+            v1 = apply(viewport, v1);
+            v2 = apply(viewport, v2);
 
-        for (std::uint32_t y = ymin; y < ymax; y++){
-            for (std::uint32_t x = xmin; x < xmax; x++){
-                glm::vec4 p = {
-                    x+0.5f, y+ 0.5f, 0.f, 1.f
-                };
+            float det012 = det(v1.xy - v0.xy, v2.xy - v0.xy);
 
-                float det01p = det(v1.xy - v0.xy, p.xy - v0.xy);
-                float det12p = det(v2.xy - v1.xy, p.xy - v1.xy);
-                float det20p = det(v0.xy - v2.xy, p.xy - v2.xy);
-                float det012 = det(v1.xy - v0.xy, v2.xy - v0.xy);
+            const bool is_ccw = det012 < 0.f;
+            switch (command.cull_mode) 
+            {
+            case CullMode::NONE:
+                if (is_ccw)
+                {
+                    std::swap(v1, v2);
+                    det012 = -det012;
+                }
+                break;
+            case CullMode::CLOCK_WISE:
+                if (!is_ccw)
+                    continue;
+                std::swap(v1, v2);
+                det012 = -det012;
+                break;
+            case CullMode::COUNTER_CLOCK_WISE:
+                if (is_ccw)
+                    continue;   
+                break;
+            default:
+                break;
+            }
 
-                const bool is_ccw_tri = det012 < 0.f;
-                
-                if (det01p >= 0.f && det12p >= 0.f && det20p >= 0.f) {
-                    float l0 = det12p / det012;
-                    float l1 = det20p / det012;
-                    float l2 = det01p / det012;
+            std::uint32_t xmin = std::max<std::uint32_t>(viewport.x, 0);
+            std::uint32_t xmax = std::min<std::uint32_t>(viewport.x + viewport.width, width)-1;
+            std::uint32_t ymin = std::max<std::uint32_t>(viewport.y, 0);
+            std::uint32_t ymax = std::min<std::uint32_t>(viewport.y + viewport.height, height)-1;
 
-                    color_buffer->at(x, y) = to_r8g8b8a8_u(glm::vec4(l0, l1, l2, 1.f));
+            xmin = std::max(xmin, std::min({ static_cast<std::uint32_t>(std::floor(v0.x)), static_cast<std::uint32_t>(std::floor(v1.x)), static_cast<std::uint32_t>(std::floor(v2.x))}));  
+            xmax = std::min(xmax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.x)), static_cast<std::uint32_t>(std::ceil(v1.x)), static_cast<std::uint32_t>(std::ceil(v2.x))}));
+            ymin = std::max(ymin, std::min({ static_cast<std::uint32_t>(std::floor(v0.y)), static_cast<std::uint32_t>(std::floor(v1.y)), static_cast<std::uint32_t>(std::floor(v2.y))}));
+            ymax = std::min(ymax, std::max({ static_cast<std::uint32_t>(std::ceil(v0.y)), static_cast<std::uint32_t>(std::ceil(v1.y)), static_cast<std::uint32_t>(std::ceil(v2.y))}));
+
+            for (std::uint32_t y = ymin; y < ymax; y++){
+                for (std::uint32_t x = xmin; x < xmax; x++){
+                    glm::vec4 p = {
+                        x+0.5f, y+ 0.5f, 0.f, 1.f
+                    };
+
+                    float det01p = det(v1.xy - v0.xy, p.xy - v0.xy);
+                    float det12p = det(v2.xy - v1.xy, p.xy - v1.xy);
+                    float det20p = det(v0.xy - v2.xy, p.xy - v2.xy);
+                    
+
+                    if (det01p > 0.f && det12p > 0.f && det20p > 0.f) {
+                        float l0 = det12p / det012 * v0.w;
+                        float l1 = det20p / det012 * v1.w;
+                        float l2 = det01p / det012 * v2.w;
+                        float lsum = l0 + l1 + l2;
+                        l0 /= lsum;
+                        l1 /= lsum;
+                        l2 /= lsum;
+                        color_buffer->at(x, y) = to_r8g8b8a8_u(glm::vec4(l0, l1, l2, 1.f));
+                    }
                 }
             }
         }
@@ -185,18 +386,30 @@ int main() {
 
     Mesh mesh = {
         .vertex = {
-            { 0.f,   0.5f, 0.f},
-            { 0.5f, -0.5f, 0.f},
-            {-0.5f, -0.5f, 0.f},
+            {-0.5f, -0.5f, -0.5f},
+            {-0.5f,  0.5f, -0.5f},
+            { 0.5f, -0.5f, -0.5f},
+            { 0.5f,  0.5f, -0.5f},
+            {-0.5f, -0.5f, 0.5f},
+            {-0.5f,  0.5f, 0.5f},
+            { 0.5f, -0.5f, 0.5f},
+            { 0.5f,  0.5f, 0.5f},
         },
         .index = {
             0, 1, 2,
+            1, 3, 2,
+            4, 5, 6,
+            5, 7, 6,
+            0, 1, 4,
+            1, 5, 4,
+            2, 3, 6,
+            3, 7, 6,
+            0, 2, 4,
+            2, 6, 4,
+            1, 3, 5,
+            3, 7, 5,
         },
     };
-    glm::mat4 model_matrix = glm::identity<glm::mat4>();
-    glm::mat4 view_matrix = glm::identity<glm::mat4>();
-    glm::mat4 projection_matrix = glm::perspective(glm::radians(45.f), static_cast<float>(width) / height, 0.1f, 100.f);
-    projection_matrix[1][1] *= -1.f; // flip y axis
     
     R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -270,9 +483,18 @@ int main() {
         // clear color
         clear(render_target_view, clear_color);  
 
+        y_rotation += delta_time;
+        auto model_mat = glm::identity<glm::mat4>();
+        model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
+        model_mat = glm::rotate(model_mat, y_rotation, glm::vec3(0.f, 1.f, 0.f));
+        model_mat = glm::rotate(model_mat, y_rotation*0.1f, glm::vec3(1.f, 1.f, 0.f));
+        auto view_mat = glm::identity<glm::mat4>();
+        view_mat = glm::translate(view_mat, camera_pos);
+        auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
         draw(&render_target_view, {
+            .cull_mode = CullMode::NONE,
             .mesh = &mesh,
-            .transform = glm::identity<glm::mat4>(),
+            .transform = proj_mat * view_mat * model_mat,
         });
 
         SDL_Rect rect{

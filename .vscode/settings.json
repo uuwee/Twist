@@ -4,6 +4,9 @@
         "execution": "cpp",
         "xiosbase": "cpp",
         "vector": "cpp",
-        "cmath": "cpp"
+        "cmath": "cpp",
+        "array": "cpp",
+        "utility": "cpp",
+        "xutility": "cpp"
     }
 }
