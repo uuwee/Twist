@@ -18,7 +18,41 @@
 #include <memory>
 #include <initializer_list>
 
-using namespace Renderer;
+struct R8G8B8A8_U{
+    std::uint8_t r, g, b, a;
+};
+static inline std::uint32_t ToUint32(R8G8B8A8_U color) {
+    return color.r << 24 | color.g << 16 | color.b << 8 | color.a << 0;
+}
+static inline R8G8B8A8_U to_r8g8b8a8_u(glm::vec4 const & color) {
+    return {
+        .r = (uint8_t)std::max(0.f, std::min(255.f, color.x * 255.f)),
+        .g = (uint8_t)std::max(0.f, std::min(255.f, color.y * 255.f)),
+        .b = (uint8_t)std::max(0.f, std::min(255.f, color.z * 255.f)),
+        .a = (uint8_t)std::max(0.f, std::min(255.f, color.w * 255.f)),
+    };
+}
+
+enum class CullMode{
+    NONE, CLOCK_WISE, COUNTER_CLOCK_WISE,
+};
+
+struct Vertex{
+    glm::vec4 position;
+    // glm::vec3 normal;
+    glm::vec2 texcoord0;
+};
+
+struct Mesh {
+    std::vector<glm::vec3> vertex;
+    // std::vector<glm::vec3> normal;
+    std::vector<glm::vec2> texcoord0;
+    std::vector<std::uint32_t> index;
+};
+
+struct ViewPort{
+    std::uint32_t x, y, width, height;
+};
 
 glm::vec4 apply(ViewPort const& vp, glm::vec4 const& vertex) {
     const float fx = static_cast<float>(vp.x);
@@ -37,23 +71,67 @@ glm::vec4 apply(ViewPort const& vp, glm::vec4 const& vertex) {
     };
 }
 
+enum class DepthTestMode{
+    NEVER, ALWAYS, LESS, LESSEQUAL, GREATER, GREATEREQUAL, EQUAL, NOTEQUAL,
+};
+
+struct DepthSettings{
+    bool write = true;
+    DepthTestMode test_mode = DepthTestMode::ALWAYS;
+};
+
+bool depth_test_passed(DepthTestMode mode, std::uint32_t value, std::uint32_t reference) {
+    switch (mode) {
+    case DepthTestMode::NEVER:
+        return false;
+    case DepthTestMode::ALWAYS:
+        return true;
+    case DepthTestMode::LESS:
+        return value < reference;
+    case DepthTestMode::LESSEQUAL:
+        return value <= reference;
+    case DepthTestMode::GREATER:
+        return value > reference;
+    case DepthTestMode::GREATEREQUAL:
+        return value >= reference;
+    case DepthTestMode::EQUAL:
+        return value == reference;
+    case DepthTestMode::NOTEQUAL:
+        return value != reference;
+    default:
+        return false;
+    }
+}
+
 struct DrawCall {
     CullMode cull_mode = CullMode::NONE;
+    DepthSettings depth_settings = {};
     Mesh* mesh = nullptr;
     glm::mat4 transform = glm::identity<glm::mat4>();
 };
 
-template<std::uint32_t width, std::uint32_t height>
-struct ImageView{
-    std::array<R8G8B8A8_U, width * height>* image = nullptr;
+template<std::uint32_t width, std::uint32_t height, typename PixelType>
+struct Image{
+    std::array<PixelType, width * height> image;
+};
 
-    R8G8B8A8_U& at(std::uint32_t x, std::uint32_t y) {
+template<std::uint32_t width, std::uint32_t height, typename PixelType>
+struct ImageView{
+    std::array<PixelType, width * height>* image = nullptr;
+
+    PixelType& at(std::uint32_t x, std::uint32_t y) {
         return image->data()[y * width + x];
     }
 };
 
 template<std::uint32_t width, std::uint32_t height>
-void clear(ImageView<width, height>& image_view, R8G8B8A8_U color) {
+struct FrameBuffer{
+    ImageView<width, height, R8G8B8A8_U> color_buffer_view;
+    ImageView<width, height, std::uint32_t> depth_buffer_view;
+};
+
+template<std::uint32_t width, std::uint32_t height, typename PixelType>
+void clear(ImageView<width, height, PixelType>& image_view, PixelType color) {
     std::fill_n(image_view.image->data(), width * height, color);
 }
 
@@ -203,7 +281,7 @@ inline glm::vec4 perspective_divide(glm::vec4 const& v) {
 }
 
 template<std::uint32_t width, std::uint32_t height>
-void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewPort const& viewport = {0, 0, width, height}) {
+void draw(FrameBuffer<width, height>* frame_buffer, DrawCall const& command, ViewPort const& viewport = {0, 0, width, height}) {
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.mesh->index.size(); idx_idx+= 3){
         std::uint32_t i0 = command.mesh->index[idx_idx + 0];
         std::uint32_t i1 = command.mesh->index[idx_idx + 1];
@@ -298,12 +376,25 @@ void draw(ImageView<width, height>* color_buffer, DrawCall const& command, ViewP
                         l1 /= lsum;
                         l2 /= lsum;
 
+                        {
+                            float z = l0 * v0.position.z + l1 * v1.position.z + l2 * v2.position.z;
+                            std::uint32_t depth = static_cast<std::uint32_t>((0.5f + 0.5f * z) * UINT32_MAX);
+
+                            auto& old_depth = frame_buffer->depth_buffer_view.at(x, y);
+                            if (!depth_test_passed(command.depth_settings.test_mode, depth, old_depth)) {
+                                continue;
+                            }
+                            if (command.depth_settings.write) {
+                                frame_buffer->depth_buffer_view.at(x, y) = depth;
+                            }
+                        }
+
                         glm::vec2 texcoord = l0 * v0.texcoord0 + l1 * v1.texcoord0 + l2 * v2.texcoord0;
                         glm::vec4 color = glm::vec4(texcoord.x , texcoord.y, 0.f, 1.f);
                         if (int(std::floor(color.x * 8) + std::floor(color.y * 8)) % 2 == 0)
-                            color_buffer->at(x, y) = {0, 0, 0, 255};
+                            frame_buffer->color_buffer_view.at(x, y) = {0, 0, 0, 255};
                         else
-                            color_buffer->at(x, y) = {255, 255, 255, 255};
+                            frame_buffer->color_buffer_view.at(x, y) = {255, 255, 255, 255};
                     }
                 }
             }
@@ -362,8 +453,20 @@ int main() {
     SDL_Surface* draw_surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     SDL_SetSurfaceBlendMode(draw_surface, SDL_BLENDMODE_NONE);
 
-    ImageView<width, height> render_target_view = {
+    ImageView<width, height, R8G8B8A8_U> render_target_view = {
         .image = reinterpret_cast<std::array<R8G8B8A8_U, width * height>*>(draw_surface->pixels),
+    };
+
+    Image<width, height, std::uint32_t> depth_buffer = {
+        .image = std::array<std::uint32_t, width * height>{},
+    };
+    ImageView<width, height, std::uint32_t> depth_buffer_view = {
+        .image = &depth_buffer.image,
+    };
+
+    FrameBuffer<width, height> frame_buffer = {
+        .color_buffer_view = render_target_view,
+        .depth_buffer_view = depth_buffer_view,
     };
 
     Mesh mesh = {
@@ -510,6 +613,7 @@ int main() {
         
         // clear color
         clear(render_target_view, clear_color);  
+        clear(depth_buffer_view, 0xFFFFFFFF);
 
         y_rotation += delta_time;
         auto model_mat = glm::identity<glm::mat4>();
@@ -519,11 +623,18 @@ int main() {
         auto view_mat = glm::identity<glm::mat4>();
         view_mat = glm::translate(view_mat, camera_pos);
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
-        draw(&render_target_view, {
-            .cull_mode = CullMode::NONE,
-            .mesh = &mesh,
-            .transform = proj_mat * view_mat * model_mat,
-        });
+        draw(
+            &frame_buffer, 
+            {
+                .cull_mode = CullMode::NONE,
+                .depth_settings = {
+                    .write = true,
+                    .test_mode = DepthTestMode::LESS,
+                },
+                .mesh = &mesh,
+                .transform = proj_mat * view_mat * model_mat,
+            }
+        );
 
         SDL_Rect rect{
             .x = 0, .y = 0, .w = width, .h = height
