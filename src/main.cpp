@@ -21,8 +21,6 @@
 #include <initializer_list>
 #include <filesystem>
 
-using namespace Renderer;
-
 void dump_surface_to_ppm(SDL_Surface const& surface){
     auto now = std::chrono::high_resolution_clock::now();
     std::ofstream out_File("./bin/output.ppm");
@@ -54,24 +52,24 @@ void dump_surface_to_ppm(SDL_Surface const& surface){
     std::cout << "Saved image to output.ppm in " << duration << "ms" << std::endl;
 }
 
-Image<R8G8B8A8_U> load_image(std::filesystem::path const& path) {
+Renderer::Image<Renderer::R8G8B8A8_U> load_image(std::filesystem::path const& path) {
     uint32_t width, height;
     int channels;
     char path_char[1024];
     size_t size;
     wcstombs_s(&size, path_char, path.c_str(), path.string().size());
     // wcstombs(path_char, path.c_str(), path.string().size());
-    R8G8B8A8_U* data = (R8G8B8A8_U*) stbi_load(path_char, (int*)&width, (int*)&height, &channels, 4);
+    Renderer::R8G8B8A8_U* data = (Renderer::R8G8B8A8_U*) stbi_load(path_char, (int*)&width, (int*)&height, &channels, 4);
     std::cout << "load file:" << path << ", size=" << width << "x" << height << std::endl;
-    Image<R8G8B8A8_U> result {
-        .image = std::vector<R8G8B8A8_U>(data, data + width * height),
+    Renderer::Image<Renderer::R8G8B8A8_U> result {
+        .image = std::vector<Renderer::R8G8B8A8_U>(data, data + width * height),
         .width = width, 
         .height = height,
     };
     return result;
 }
 
-void generate_mipmaps(Texture<R8G8B8A8_U>* texture){
+void generate_mipmaps(Renderer::Texture<Renderer::R8G8B8A8_U>* texture){
     if (texture->mipmaps.empty()) return;
 
     texture->mipmaps.resize(1);
@@ -85,8 +83,8 @@ void generate_mipmaps(Texture<R8G8B8A8_U>* texture){
         std::uint32_t new_width = prev_level.width / 2 + (prev_level.width & 1);
         std::uint32_t new_height = prev_level.height / 2 + (prev_level.height & 1);
 
-        Image<R8G8B8A8_U> next_level = {
-            .image = std::vector<R8G8B8A8_U>(new_width * new_height),
+        Renderer::Image<Renderer::R8G8B8A8_U> next_level = {
+            .image = std::vector<Renderer::R8G8B8A8_U>(new_width * new_height),
             .width = new_width,
             .height = new_height,
         };
@@ -106,7 +104,7 @@ void generate_mipmaps(Texture<R8G8B8A8_U>* texture){
 
                 result /= 4.f;
 
-                next_level.at(x, y) = to_r8g8b8a8_u(result);
+                next_level.at(x, y) = Renderer::to_r8g8b8a8_u(result);
             }
         }
 
@@ -124,36 +122,36 @@ int main() {
     SDL_Surface* draw_surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     SDL_SetSurfaceBlendMode(draw_surface, SDL_BLENDMODE_NONE);
 
-    ImageView<R8G8B8A8_U> render_target_view = {
-        .image = (R8G8B8A8_U*)draw_surface->pixels,
+    Renderer::ImageView<Renderer::R8G8B8A8_U> render_target_view = {
+        .image = (Renderer::R8G8B8A8_U*)draw_surface->pixels,
         .width = width,
         .height = height,
     };
 
-    Image<std::uint32_t> depth_buffer = {
+    Renderer::Image<std::uint32_t> depth_buffer = {
         .image = std::vector<std::uint32_t>(width * height),
         .width = width, 
         .height = height,
     };
-    ImageView<std::uint32_t> depth_buffer_view = create_imageview(depth_buffer, width, height);
+    Renderer::ImageView<std::uint32_t> depth_buffer_view = create_imageview(depth_buffer, width, height);
 
-    FrameBuffer frame_buffer = {
+    Renderer::FrameBuffer frame_buffer = {
         .color_buffer_view = render_target_view,
         .depth_buffer_view = depth_buffer_view,
     };
 
-    Mesh mesh = Primitives::create_cube();
+    Renderer::Mesh mesh = Primitives::create_cube();
 
     // Texture<R8G8B8A8_U> brick_texture{
     //     .mipmaps = 
     // }
     std::filesystem::path brick_img_path = "./resource/brick_1024.jpg";
-    Texture<R8G8B8A8_U> brick_texture{};
+    Renderer::Texture<Renderer::R8G8B8A8_U> brick_texture{};
     brick_texture.mipmaps.push_back(load_image(brick_img_path));
     generate_mipmaps(&brick_texture);
 
     
-    R8G8B8A8_U clear_color = {255, 200, 200, 255};
+    Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
     // timer
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -225,7 +223,7 @@ int main() {
         clear(render_target_view, clear_color);  
         clear(depth_buffer_view, 0xFFFFFFFF);
 
-        ViewPort viewport = {
+        Renderer::ViewPort viewport = {
             .x = 0,
             .y = 0,
             .width = width,
@@ -243,10 +241,10 @@ int main() {
         draw(
             &frame_buffer, 
             {
-                .cull_mode = CullMode::NONE,
+                .cull_mode = Renderer::CullMode::NONE,
                 .depth_settings = {
                     .write = true,
-                    .test_mode = DepthTestMode::LESS,
+                    .test_mode = Renderer::DepthTestMode::LESS,
                 },
                 .mesh = &mesh,
                 .texture = &brick_texture,

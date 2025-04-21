@@ -432,7 +432,7 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             glm::vec4 color = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
 
                             auto albedo = command.texture;
-                            glm::vec2 texture_scale;
+                            glm::vec2 texture_scale(albedo->mipmaps[0].width, albedo->mipmaps[0].height);
                             glm::vec2 tc = texture_scale * tex_coord[dy][dx];
                             glm::vec2 tc_dx = texture_scale * (tex_coord[dy][1] - tex_coord[dy][0]);
                             glm::vec2 tc_dy = texture_scale * (tex_coord[1][dx] - tex_coord[0][dx]);
@@ -443,12 +443,13 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             Image<R8G8B8A8_U>* mipmap;
                             Sampler::Filtering filter;
                             
+                            int mipmap_level = 0;
                             if (magnification) {
                                 mipmap = &albedo->mipmaps[0];
                                 filter = Sampler::Filtering::LINEAR;
                             }
                             else {
-                                int mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
+                                mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
                                 mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
                                 filter = Sampler::Filtering::LINEAR;
                             }
@@ -487,6 +488,7 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             }
 
                             frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(color);
+                            // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                         }
                     }
                     
