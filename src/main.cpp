@@ -71,11 +71,7 @@ int main() {
     Image<width, height, std::uint32_t> depth_buffer = {
         .image = std::array<std::uint32_t, width * height>{},
     };
-    ImageView<std::uint32_t> depth_buffer_view = {
-        .image = (std::uint32_t*)&depth_buffer.image,
-        .width = width,
-        .height = height,
-    };
+    ImageView<std::uint32_t> depth_buffer_view = create_imageview(depth_buffer);
 
     FrameBuffer frame_buffer = {
         .color_buffer_view = render_target_view,

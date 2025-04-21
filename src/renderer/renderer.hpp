@@ -107,6 +107,15 @@ struct ImageView{
     }
 };
 
+template<std::uint32_t width, std::uint32_t height, typename PixelType>
+ImageView<PixelType> create_imageview(const Image<width, height, PixelType>& image){
+    return ImageView{
+        .image = (PixelType*)image.image.data(),
+        .width = width,
+        .height = height,
+    };
+}
+
 struct Sampler{
     enum class Filtering{
         NEAREST,
