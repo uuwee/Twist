@@ -22,6 +22,9 @@ static inline R8G8B8A8_U to_r8g8b8a8_u(glm::vec4 const & color) {
         .a = (uint8_t)std::max(0.f, std::min(255.f, color.w * 255.f)),
     };
 }
+static inline glm::vec4 to_vec4(R8G8B8A8_U const& color){
+    return glm::vec4(static_cast<float>(color.r), static_cast<float>(color.g), static_cast<float>(color.b), static_cast<float>(color.a)) / 255.f;
+}
 
 enum class CullMode{
     NONE, CLOCK_WISE, COUNTER_CLOCK_WISE,
@@ -93,9 +96,13 @@ bool depth_test_passed(DepthTestMode mode, std::uint32_t value, std::uint32_t re
     }
 }
 
-template<std::uint32_t width, std::uint32_t height, typename PixelType>
+template<typename PixelType>
 struct Image{
-    std::array<PixelType, width * height> image;
+    std::vector<PixelType> image;
+    std::uint32_t width, height;
+    PixelType& at(std::uint32_t x, std::uint32_t y) {
+        return image[y * width + x];
+    }
 };
 
 template<typename PixelType>
@@ -107,8 +114,8 @@ struct ImageView{
     }
 };
 
-template<std::uint32_t width, std::uint32_t height, typename PixelType>
-ImageView<PixelType> create_imageview(const Image<width, height, PixelType>& image){
+template<typename PixelType>
+ImageView<PixelType> create_imageview(const Image<PixelType>& image, const uint32_t width, const uint32_t height){
     return ImageView{
         .image = (PixelType*)image.image.data(),
         .width = width,
@@ -125,12 +132,17 @@ struct Sampler{
     Filtering min_filter;
 };
 
+template<typename PixelType>
+struct Texture {
+    std::vector<Image<PixelType>> mipmaps;
+};
+
 struct DrawCall {
     CullMode cull_mode = CullMode::NONE;
     DepthSettings depth_settings = {};
     Mesh* mesh = nullptr;
     Sampler* sampler = nullptr;
-    ImageView<R8G8B8A8_U>* texture = nullptr;
+    Texture<R8G8B8A8_U>* texture = nullptr;
     glm::mat4 transform = glm::identity<glm::mat4>();
 };
 
@@ -364,46 +376,121 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
             ymin = static_cast<int32_t>(std::max<float>(static_cast<float>(ymin), std::min({ std::floor(v0.position.y), std::floor(v1.position.y), std::floor(v2.position.y)})));
             ymax = static_cast<int32_t>(std::min<float>(static_cast<float>(ymax), std::max({ std::ceil(v0.position.y), std::ceil(v1.position.y), std::ceil(v2.position.y)})));
 
-            for (std::int32_t y = ymin; y < ymax; y++){
-                for (std::int32_t x = xmin; x < xmax; x++){
-                    glm::vec4 p = glm::vec4(
-                        x+0.5f, y+ 0.5f, 0.f, 0.f
-                    );
+            for (std::int32_t y = ymin; y < ymax; y+=2){
+                for (std::int32_t x = xmin; x < xmax; x+=2){
 
-                    float det01p = det(v1.position.xy - v0.position.xy, p.xy - v0.position.xy);
-                    float det12p = det(v2.position.xy - v1.position.xy, p.xy - v1.position.xy);
-                    float det20p = det(v0.position.xy - v2.position.xy, p.xy - v2.position.xy);
+                    using array2x2 = std::array<std::array<float, 2>, 2>;
+                    array2x2 det01p;
+                    array2x2 det12p;
+                    array2x2 det20p;
+
+                    array2x2 l0;
+                    array2x2 l1;
+                    array2x2 l2;
+
+                    std::array<std::array<glm::vec2, 2>, 2> tex_coord;
+
+                    for (int dy = 0; dy < 2; dy++){
+                        for (int dx = 0; dx < 2; dx++){
+                            glm::vec4 p = glm::vec4(
+                                x+dx+0.5f, y+dy+0.5f, 0.f, 0.f
+                            );
+
+                            det01p[dy][dx] = det(v1.position - v0.position, p - v0.position);
+                            det12p[dy][dx] = det(v2.position - v1.position, p - v1.position);
+                            det20p[dy][dx] = det(v0.position - v2.position, p - v2.position);
+
+                            l0[dy][dx] = det12p[dy][dx] / det012 * v0.position.w;
+                            l1[dy][dx] = det20p[dy][dx] / det012 * v1.position.w;
+                            l2[dy][dx] = det01p[dy][dx] / det012 * v2.position.w;
+
+                            float lsum = l0[dy][dx] + l1[dy][dx] + l2[dy][dx];
+
+                            l0[dy][dx] /= lsum;
+                            l1[dy][dx] /= lsum;
+                            l2[dy][dx] /= lsum;
+
+                            tex_coord[dy][dx] = l0[dy][dx] * v0.texcoord0 + l1[dy][dx] * v1.texcoord0 + l2[dy][dx] * v2.texcoord0;
+                        }
+                    }
+
+                    for (int dy = 0; dy < 2; dy++) {
+                        for (int dx = 0; dx < 2; dx++) {
+                            if (x + dx > xmax || y + dy > ymax) continue;
+                            if (det01p[dy][dx] < 0.f || det12p[dy][dx] < 0.f || det20p[dy][dx] < 0.f) continue;
+
+                            auto ndc_position = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
+
+                            std::uint32_t depth = static_cast<uint32_t>((0.5f + 0.5f * ndc_position.z) * UINT32_MAX);
+
+                            if (!depth_test_passed(command.depth_settings.test_mode, depth, frame_buffer->depth_buffer_view.at(x + dx, y + dy)))
+                                continue;
+
+                            if (command.depth_settings.write)
+                                frame_buffer->depth_buffer_view.at(x + dx, y + dy) = depth;
+
+                            glm::vec4 color = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
+
+                            auto albedo = command.texture;
+                            glm::vec2 texture_scale;
+                            glm::vec2 tc = texture_scale * tex_coord[dy][dx];
+                            glm::vec2 tc_dx = texture_scale * (tex_coord[dy][1] - tex_coord[dy][0]);
+                            glm::vec2 tc_dy = texture_scale * (tex_coord[1][dx] - tex_coord[0][dx]);
+
+                            float texel_area = 1.f / std::abs(det(tc_dx, tc_dy));
+                            bool magnification = texel_area >= 1.f;
+
+                            Image<R8G8B8A8_U>* mipmap;
+                            Sampler::Filtering filter;
+                            
+                            if (magnification) {
+                                mipmap = &albedo->mipmaps[0];
+                                filter = Sampler::Filtering::LINEAR;
+                            }
+                            else {
+                                int mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
+                                mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
+                                filter = Sampler::Filtering::LINEAR;
+                            }
+
+                            tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
+                            tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
+
+                            if (filter == Sampler::Filtering::NEAREST || mipmap->width == 1 || mipmap->height == 1){
+                                int ix = static_cast<int>(std::floor(tc.x));
+                                int iy = static_cast<int>(std::floor(tc.y));
+
+                                auto texel = mipmap->at(ix, iy);
+                                color = to_vec4(texel);
+                            }
+                            else {
+                                tc.x -= 0.5f;
+                                tc.y -= 0.5f;
+
+                                tc.x = std::max<float>(0.f, std::min<float>(mipmap->width - 1.f, tc.x));
+                                tc.y = std::max<float>(0.f, std::min<float>(mipmap->height - 1.f, tc.y));
+
+                                int ix = std::min<int>(mipmap->width - 2, static_cast<int>(std::floor(tc.x)));
+                                int iy = std::min<int>(mipmap->height - 2, static_cast<int>(std::floor(tc.y)));
+
+                                tc.x -= ix;
+                                tc.y -= iy;
+
+                                std::array<glm::vec4, 4>samples = {
+                                    to_vec4(mipmap->at(ix + 0, iy + 0)),
+                                    to_vec4(mipmap->at(ix + 1, iy + 0)),
+                                    to_vec4(mipmap->at(ix + 0, iy + 1)),
+                                    to_vec4(mipmap->at(ix + 1, iy + 1)),
+                                };
+
+                                color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
+                            }
+
+                            frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(color);
+                        }
+                    }
                     
 
-                    if (det01p >= 0.f && det12p >= 0.f && det20p >= 0.f) {
-                        float l0 = det12p / det012 * v0.position.w;
-                        float l1 = det20p / det012 * v1.position.w;
-                        float l2 = det01p / det012 * v2.position.w;
-                        float lsum = l0 + l1 + l2;
-                        l0 /= lsum;
-                        l1 /= lsum;
-                        l2 /= lsum;
-
-                        {
-                            float z = l0 * v0.position.z + l1 * v1.position.z + l2 * v2.position.z;
-                            std::uint32_t depth = static_cast<std::uint32_t>((0.5f + 0.5f * z) * UINT32_MAX);
-
-                            auto& old_depth = frame_buffer->depth_buffer_view.at(x, y);
-                            if (!depth_test_passed(command.depth_settings.test_mode, depth, old_depth)) {
-                                continue;
-                            }
-                            if (command.depth_settings.write) {
-                                frame_buffer->depth_buffer_view.at(x, y) = depth;
-                            }
-                        }
-
-                        glm::vec2 texcoord = l0 * v0.texcoord0 + l1 * v1.texcoord0 + l2 * v2.texcoord0;
-                        glm::vec4 color = glm::vec4(texcoord.x , texcoord.y, 0.f, 1.f);
-                        if (int(std::floor(color.x * 8) + std::floor(color.y * 8)) % 2 == 0)
-                            frame_buffer->color_buffer_view.at(x, y) = {0, 0, 0, 255};
-                        else
-                            frame_buffer->color_buffer_view.at(x, y) = {255, 255, 255, 255};
-                    }
                 }
             }
         }

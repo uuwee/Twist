@@ -4,6 +4,7 @@
 #include "glm/gtc/matrix_transform.hpp"
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+#include "stb_image/stb_image.h"
 
 #include "renderer/renderer.hpp"
 #include "utils/primitive.hpp"
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <initializer_list>
+#include <filesystem>
 
 using namespace Renderer;
 
@@ -52,6 +54,66 @@ void dump_surface_to_ppm(SDL_Surface const& surface){
     std::cout << "Saved image to output.ppm in " << duration << "ms" << std::endl;
 }
 
+Image<R8G8B8A8_U> load_image(std::filesystem::path const& path) {
+    uint32_t width, height;
+    int channels;
+    char path_char[1024];
+    size_t size;
+    wcstombs_s(&size, path_char, path.c_str(), path.string().size());
+    // wcstombs(path_char, path.c_str(), path.string().size());
+    R8G8B8A8_U* data = (R8G8B8A8_U*) stbi_load(path_char, (int*)&width, (int*)&height, &channels, 4);
+    std::cout << "load file:" << path << ", size=" << width << "x" << height << std::endl;
+    Image<R8G8B8A8_U> result {
+        .image = std::vector<R8G8B8A8_U>(data, data + width * height),
+        .width = width, 
+        .height = height,
+    };
+    return result;
+}
+
+void generate_mipmaps(Texture<R8G8B8A8_U>* texture){
+    if (texture->mipmaps.empty()) return;
+
+    texture->mipmaps.resize(1);
+
+    for (int i = 1;;i++){
+        auto& prev_level = texture->mipmaps[i - 1];
+
+        if (prev_level.width == 1 && prev_level.height == 1)
+            break;
+
+        std::uint32_t new_width = prev_level.width / 2 + (prev_level.width & 1);
+        std::uint32_t new_height = prev_level.height / 2 + (prev_level.height & 1);
+
+        Image<R8G8B8A8_U> next_level = {
+            .image = std::vector<R8G8B8A8_U>(new_width * new_height),
+            .width = new_width,
+            .height = new_height,
+        };
+
+        auto get_pixel = [&](std::uint32_t x, std::uint32_t y){
+            return to_vec4(prev_level.at(std::min(x, prev_level.width - 1), std::min(y, prev_level.height - 1)));
+        };
+
+        for (std::uint32_t y = 0; y < new_height; y++){
+            for (std::uint32_t x = 0; x < new_width; x++){
+                glm::vec4 result(0.f, 0.f, 0.f, 0.f);
+
+                result += get_pixel(2 * x + 0, 2 * y + 0);
+                result += get_pixel(2 * x + 1, 2 * y + 0);
+                result += get_pixel(2 * x + 0, 2 * y + 1);
+                result += get_pixel(2 * x + 1, 2 * y + 1);
+
+                result /= 4.f;
+
+                next_level.at(x, y) = to_r8g8b8a8_u(result);
+            }
+        }
+
+        texture->mipmaps.push_back(std::move(next_level));
+    }
+}
+
 int main() {
     std::cout << "hello, world!" << std::endl;
     constexpr int width = 600, height = 400;
@@ -68,10 +130,12 @@ int main() {
         .height = height,
     };
 
-    Image<width, height, std::uint32_t> depth_buffer = {
-        .image = std::array<std::uint32_t, width * height>{},
+    Image<std::uint32_t> depth_buffer = {
+        .image = std::vector<std::uint32_t>(width * height),
+        .width = width, 
+        .height = height,
     };
-    ImageView<std::uint32_t> depth_buffer_view = create_imageview(depth_buffer);
+    ImageView<std::uint32_t> depth_buffer_view = create_imageview(depth_buffer, width, height);
 
     FrameBuffer frame_buffer = {
         .color_buffer_view = render_target_view,
@@ -79,6 +143,15 @@ int main() {
     };
 
     Mesh mesh = Primitives::create_cube();
+
+    // Texture<R8G8B8A8_U> brick_texture{
+    //     .mipmaps = 
+    // }
+    std::filesystem::path brick_img_path = "./resource/brick_1024.jpg";
+    Texture<R8G8B8A8_U> brick_texture{};
+    brick_texture.mipmaps.push_back(load_image(brick_img_path));
+    generate_mipmaps(&brick_texture);
+
     
     R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -176,6 +249,7 @@ int main() {
                     .test_mode = DepthTestMode::LESS,
                 },
                 .mesh = &mesh,
+                .texture = &brick_texture,
                 .transform = proj_mat * view_mat * model_mat,
             },
             viewport  
