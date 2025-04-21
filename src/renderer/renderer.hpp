@@ -93,36 +93,46 @@ bool depth_test_passed(DepthTestMode mode, std::uint32_t value, std::uint32_t re
     }
 }
 
-struct DrawCall {
-    CullMode cull_mode = CullMode::NONE;
-    DepthSettings depth_settings = {};
-    Mesh* mesh = nullptr;
-    glm::mat4 transform = glm::identity<glm::mat4>();
-};
-
 template<std::uint32_t width, std::uint32_t height, typename PixelType>
 struct Image{
     std::array<PixelType, width * height> image;
 };
 
-template<std::uint32_t width, std::uint32_t height, typename PixelType>
+template<typename PixelType>
 struct ImageView{
-    std::array<PixelType, width * height>* image = nullptr;
-
+    PixelType* image = nullptr;
+    std::uint32_t width, height;
     PixelType& at(std::uint32_t x, std::uint32_t y) {
-        return image->data()[y * width + x];
+        return image[y * width + x];
     }
 };
 
-template<std::uint32_t width, std::uint32_t height>
-struct FrameBuffer{
-    ImageView<width, height, R8G8B8A8_U> color_buffer_view;
-    ImageView<width, height, std::uint32_t> depth_buffer_view;
+struct Sampler{
+    enum class Filtering{
+        NEAREST,
+        LINEAR,
+    };
+    Filtering mag_filter;
+    Filtering min_filter;
 };
 
-template<std::uint32_t width, std::uint32_t height, typename PixelType>
-void clear(ImageView<width, height, PixelType>& image_view, PixelType color) {
-    std::fill_n(image_view.image->data(), width * height, color);
+struct DrawCall {
+    CullMode cull_mode = CullMode::NONE;
+    DepthSettings depth_settings = {};
+    Mesh* mesh = nullptr;
+    Sampler* sampler = nullptr;
+    ImageView<R8G8B8A8_U>* texture = nullptr;
+    glm::mat4 transform = glm::identity<glm::mat4>();
+};
+
+struct FrameBuffer{
+    ImageView<R8G8B8A8_U> color_buffer_view;
+    ImageView<std::uint32_t> depth_buffer_view;
+};
+
+template<typename PixelType>
+void clear(ImageView<PixelType>& image_view, PixelType color) {
+    std::fill_n(image_view.image, image_view.width * image_view.height, color);
 }
 
 float det(glm::vec2 const& a, glm::vec2 const& b) {
@@ -270,8 +280,7 @@ inline glm::vec4 perspective_divide(glm::vec4 const& v) {
     return glm::vec4(v.x * w, v.y * w, v.z * w, w);
 }
 
-template<std::uint32_t width, std::uint32_t height>
-void draw(FrameBuffer<width, height>* frame_buffer, DrawCall const& command, ViewPort const& viewport = {0, 0, width, height}) {
+void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& viewport) {
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.mesh->index.size(); idx_idx+= 3){
         std::uint32_t i0 = command.mesh->index[idx_idx + 0];
         std::uint32_t i1 = command.mesh->index[idx_idx + 1];
@@ -337,9 +346,9 @@ void draw(FrameBuffer<width, height>* frame_buffer, DrawCall const& command, Vie
             }
 
             std::int32_t xmin = std::max<std::int32_t>(viewport.x, 0);
-            std::int32_t xmax = std::min<std::int32_t>(viewport.x + viewport.width, width)-1;
+            std::int32_t xmax = std::min<std::int32_t>(viewport.x + viewport.width, frame_buffer->color_buffer_view.width)-1;
             std::int32_t ymin = std::max<std::int32_t>(viewport.y, 0);
-            std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, height)-1;
+            std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, frame_buffer->color_buffer_view.height)-1;
 
             xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.position.x), std::floor(v1.position.x), std::floor(v2.position.x)})));  
             xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.position.x), std::ceil(v1.position.x), std::ceil(v2.position.x)})));

@@ -62,18 +62,22 @@ int main() {
     SDL_Surface* draw_surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     SDL_SetSurfaceBlendMode(draw_surface, SDL_BLENDMODE_NONE);
 
-    ImageView<width, height, R8G8B8A8_U> render_target_view = {
-        .image = reinterpret_cast<std::array<R8G8B8A8_U, width * height>*>(draw_surface->pixels),
+    ImageView<R8G8B8A8_U> render_target_view = {
+        .image = (R8G8B8A8_U*)draw_surface->pixels,
+        .width = width,
+        .height = height,
     };
 
     Image<width, height, std::uint32_t> depth_buffer = {
         .image = std::array<std::uint32_t, width * height>{},
     };
-    ImageView<width, height, std::uint32_t> depth_buffer_view = {
-        .image = &depth_buffer.image,
+    ImageView<std::uint32_t> depth_buffer_view = {
+        .image = (std::uint32_t*)&depth_buffer.image,
+        .width = width,
+        .height = height,
     };
 
-    FrameBuffer<width, height> frame_buffer = {
+    FrameBuffer frame_buffer = {
         .color_buffer_view = render_target_view,
         .depth_buffer_view = depth_buffer_view,
     };
@@ -106,7 +110,6 @@ int main() {
                 running = false;
                 break;
             case SDL_KeyCode::SDLK_p:
-                // dump_surface_to_ppm(*draw_surface);
                 dump_image = true;
                 break;
             case SDL_KeyCode::SDLK_w:
@@ -153,6 +156,13 @@ int main() {
         clear(render_target_view, clear_color);  
         clear(depth_buffer_view, 0xFFFFFFFF);
 
+        ViewPort viewport = {
+            .x = 0,
+            .y = 0,
+            .width = width,
+            .height = height,
+        };
+
         y_rotation += delta_time;
         auto model_mat = glm::identity<glm::mat4>();
         model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
@@ -171,7 +181,8 @@ int main() {
                 },
                 .mesh = &mesh,
                 .transform = proj_mat * view_mat * model_mat,
-            }
+            },
+            viewport  
         );
 
         SDL_Rect rect{
