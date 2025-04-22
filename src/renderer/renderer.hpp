@@ -7,6 +7,9 @@
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 
+#include <filesystem>
+#include <iostream>
+
 namespace Renderer{
 struct R8G8B8A8_U{
     std::uint8_t r, g, b, a;
@@ -123,15 +126,6 @@ ImageView<PixelType> create_imageview(const Image<PixelType>& image, const uint3
     };
 }
 
-struct Sampler{
-    enum class Filtering{
-        NEAREST,
-        LINEAR,
-    };
-    Filtering mag_filter;
-    Filtering min_filter;
-};
-
 template<typename PixelType>
 struct Texture {
     std::vector<Image<PixelType>> mipmaps;
@@ -141,7 +135,6 @@ struct DrawCall {
     CullMode cull_mode = CullMode::NONE;
     DepthSettings depth_settings = {};
     Mesh* mesh = nullptr;
-    Sampler* sampler = nullptr;
     Texture<R8G8B8A8_U>* texture = nullptr;
     glm::mat4 transform = glm::identity<glm::mat4>();
 };
@@ -441,23 +434,20 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             bool magnification = texel_area >= 1.f;
 
                             Image<R8G8B8A8_U>* mipmap;
-                            Sampler::Filtering filter;
                             
                             int mipmap_level = 0;
                             if (magnification) {
                                 mipmap = &albedo->mipmaps[0];
-                                filter = Sampler::Filtering::LINEAR;
                             }
                             else {
                                 mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
                                 mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
-                                filter = Sampler::Filtering::LINEAR;
                             }
 
                             tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
                             tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
 
-                            if (filter == Sampler::Filtering::NEAREST || mipmap->width == 1 || mipmap->height == 1){
+                            if (mipmap->width == 1 || mipmap->height == 1){
                                 int ix = static_cast<int>(std::floor(tc.x));
                                 int iy = static_cast<int>(std::floor(tc.y));
 
@@ -507,5 +497,66 @@ std::uint32_t bits_reverse( std::uint32_t v )
     v = (v & 0x00ff00ff) <<  8 | (v >>  8 & 0x00ff00ff);
     v = (v & 0x0000ffff) << 16 | (v >> 16 & 0x0000ffff);
     return v;
-}       
+}
+
+Renderer::Image<Renderer::R8G8B8A8_U> load_image(std::filesystem::path const& path) {
+    uint32_t width, height;
+    int channels;
+    char path_char[1024];
+    size_t size;
+    wcstombs_s(&size, path_char, path.c_str(), path.string().size());
+    // wcstombs(path_char, path.c_str(), path.string().size());
+    Renderer::R8G8B8A8_U* data = (Renderer::R8G8B8A8_U*) stbi_load(path_char, (int*)&width, (int*)&height, &channels, 4);
+    std::cout << "load file:" << path << ", size=" << width << "x" << height << std::endl;
+    Renderer::Image<Renderer::R8G8B8A8_U> result {
+        .image = std::vector<Renderer::R8G8B8A8_U>(data, data + width * height),
+        .width = width, 
+        .height = height,
+    };
+    return result;
+}
+
+void generate_mipmaps(Renderer::Texture<Renderer::R8G8B8A8_U>* texture){
+    if (texture->mipmaps.empty()) return;
+
+    texture->mipmaps.resize(1);
+
+    for (int i = 1;;i++){
+        auto& prev_level = texture->mipmaps[i - 1];
+
+        if (prev_level.width == 1 && prev_level.height == 1)
+            break;
+
+        std::uint32_t new_width = prev_level.width / 2 + (prev_level.width & 1);
+        std::uint32_t new_height = prev_level.height / 2 + (prev_level.height & 1);
+
+        Renderer::Image<Renderer::R8G8B8A8_U> next_level = {
+            .image = std::vector<Renderer::R8G8B8A8_U>(new_width * new_height),
+            .width = new_width,
+            .height = new_height,
+        };
+
+        auto get_pixel = [&](std::uint32_t x, std::uint32_t y){
+            return to_vec4(prev_level.at(std::min(x, prev_level.width - 1), std::min(y, prev_level.height - 1)));
+        };
+
+        for (std::uint32_t y = 0; y < new_height; y++){
+            for (std::uint32_t x = 0; x < new_width; x++){
+                glm::vec4 result(0.f, 0.f, 0.f, 0.f);
+
+                result += get_pixel(2 * x + 0, 2 * y + 0);
+                result += get_pixel(2 * x + 1, 2 * y + 0);
+                result += get_pixel(2 * x + 0, 2 * y + 1);
+                result += get_pixel(2 * x + 1, 2 * y + 1);
+
+                result /= 4.f;
+
+                next_level.at(x, y) = Renderer::to_r8g8b8a8_u(result);
+            }
+        }
+
+        texture->mipmaps.push_back(std::move(next_level));
+    }
+}
+       
 }
