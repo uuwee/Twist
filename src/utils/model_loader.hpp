@@ -57,33 +57,19 @@ namespace ModelLoader{
                     continue;
                 }
 
-                // Renderer::Mesh mesh{};
-                // for (size_t v = 0; v < fv; v++){
-                //     tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
-                //     vertex.position = {
-                //         attrib.vertices[3 * size_t(idx.vertex_index) + 0],
-                //         attrib.vertices[3 * size_t(idx.vertex_index) + 1],
-                //         attrib.vertices[3 * size_t(idx.vertex_index) + 2],
-                //     };
-                //     // vertex.normal = {
-                //     //     attrib.normals[3 * size_t(idx.normal_index) + 0],
-                //     //     attrib.normals[3 * size_t(idx.normal_index) + 1],
-                //     //     attrib.normals[3 * size_t(idx.normal_index) + 2],
-                //     // };
-                //     vertex.texcoord0 = {
-                //         attrib.texcoords[2 * size_t(idx.texcoord_index) + 0],
-                //         attrib.texcoords[2 * size_t(idx.texcoord_index) + 1],
-                //     };
-                //     mesh.vertices.push_back(vertex);
-                // }
-                // index_offset += fv;
-
-                // mesh.indices.resize(fv);
-                // for (size_t v = 0; v < fv; v++){
-                //     mesh.indices[v] = index_offset - fv + v;
-                // }
+                Renderer::Mesh mesh{};
+                for (size_t v = 0; v < fv; v++){
+                    tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
+                    
+                    mesh.vertex.push_back({attrib.vertices[3 * size_t(idx.vertex_index) + 0],
+                                           attrib.vertices[3 * size_t(idx.vertex_index) + 1],
+                                           attrib.vertices[3 * size_t(idx.vertex_index) + 2]});
+                    mesh.texcoord0.push_back({attrib.texcoords[2 * size_t(idx.texcoord_index) + 0],
+                                               attrib.texcoords[2 * size_t(idx.texcoord_index) + 1]});
+                    mesh.index.push_back(static_cast<std::uint32_t>(v));
+                }
                 
-                // result->models.push_back({mesh, {}});
+                result->models.push_back({mesh, {}});
             }
         }
 

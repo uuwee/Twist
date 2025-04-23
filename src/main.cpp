@@ -88,7 +88,7 @@ int main() {
     brick_texture.mipmaps.push_back(Renderer::load_image(brick_img_path));
     Renderer::generate_mipmaps(&brick_texture);
 
-    // ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/San_Miguel/san-miguel.obj");
+    ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/sibenik/sibenik.obj");
     
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -99,6 +99,7 @@ int main() {
     bool running = true;
     bool dump_image = false;
 
+    int shape_idx = 0;
     glm::vec3 camera_pos = {0.f, 0.f, -1.f};
     float y_rotation = 0.f;
     glm::vec2 mouse_pos = {0.f, 0.f};
@@ -135,6 +136,12 @@ int main() {
                 break;
             case SDL_KeyCode::SDLK_e:
                 camera_pos.z += 0.1f;
+                break;
+            case SDL_KeyCode::SDLK_h:
+                shape_idx = (shape_idx + 1) % scene->models.size();
+                break;
+            case SDL_KeyCode::SDLK_j:
+                shape_idx = (shape_idx - 1 + static_cast<int>(scene->models.size())) % scene->models.size();
                 break;
             
             default:
@@ -188,7 +195,7 @@ int main() {
                     .write = true,
                     .test_mode = Renderer::DepthTestMode::LESS,
                 },
-                .mesh = &mesh,
+                .mesh = &scene->models[shape_idx].mesh,
                 .texture = &brick_texture,
                 .transform = proj_mat * view_mat * model_mat,
             },
