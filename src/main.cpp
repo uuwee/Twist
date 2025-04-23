@@ -88,7 +88,7 @@ int main() {
     brick_texture.mipmaps.push_back(Renderer::load_image(brick_img_path));
     Renderer::generate_mipmaps(&brick_texture);
 
-    ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/CornellBox.glb");
+    // ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/San_Miguel/san-miguel.obj");
     
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
