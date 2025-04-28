@@ -91,7 +91,6 @@ int main() {
 
     ModelLoader::Scene scene;
     ModelLoader::load_scene(&scene, "./resource/sibenik/sibenik.obj");
-    // ModelLoader::load_scene(&scene, "./resource/camera/camera.obj");
 
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -105,7 +104,6 @@ int main() {
     glm::vec3 camera_pos = {0.f, 0.f, -1.f};
     float y_rotation = 0.f;
     glm::vec2 mouse_pos = {0.f, 0.f};
-    int shape_idx = 0;
 
     while(running) {
         for (SDL_Event event; SDL_PollEvent(&event); ) switch (event.type)
@@ -140,13 +138,6 @@ int main() {
             case SDL_KeyCode::SDLK_e:
                 camera_pos.z += 0.1f;
                 break;
-
-            case SDL_KeyCode::SDLK_j:
-                shape_idx = (shape_idx + 1) % static_cast<int>(scene.meshes.size());
-                break;
-            case SDL_KeyCode::SDLK_k:
-                shape_idx = (shape_idx - 1 + static_cast<int>(scene.meshes.size())) % static_cast<int>(scene.meshes.size());
-                break;
             
             default:
                 break;
@@ -166,8 +157,6 @@ int main() {
         auto delta_time = std::chrono::duration<float>(now - last_frame_start).count();
         last_frame_start = now;
 
-        // std::cout << "delta_time: " << delta_time << std::endl;
-        // std::cout << "FPS: " << 1.0f / delta_time << std::endl;
         std::ostringstream title;
         title << "FPS:" << 1.f / delta_time;
         SDL_SetWindowTitle(window, title.str().c_str());
