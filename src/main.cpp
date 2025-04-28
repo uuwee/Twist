@@ -4,6 +4,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include "stb_image/stb_image.h"
+#include "rapidobj/rapidobj.hpp"
 
 #include "renderer/renderer.hpp"
 #include "utils/primitive.hpp"
@@ -88,7 +89,26 @@ int main() {
     brick_texture.mipmaps.push_back(Renderer::load_image(brick_img_path));
     Renderer::generate_mipmaps(&brick_texture);
 
-    ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/sibenik/sibenik.obj");
+    // ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/sibenik/sibenik.obj");
+    auto box_mesh = Primitives::create_cube();
+    rapidobj::Result result = rapidobj::ParseFile("./resource/sibenik/sibenik.obj");
+    if (result.error){
+        std::cerr << "Error parsing OBJ file: " << result.error.code.message() << "\n";
+        return -1;
+    }
+    bool success = rapidobj::Triangulate(result);
+
+    if (!success) {
+        std::cerr << "Error triangulating OBJ file: " << result.error.code.message() << "\n";
+        return -1;
+    }
+
+    size_t num_triangles {};
+    for (const auto& shape : result.shapes) {
+        num_triangles += shape.mesh.num_face_vertices.size();
+    }
+
+    std::cout << "shapes: " << result.shapes.size() << ", triangles: " << num_triangles << "\n";
     
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -136,12 +156,6 @@ int main() {
                 break;
             case SDL_KeyCode::SDLK_e:
                 camera_pos.z += 0.1f;
-                break;
-            case SDL_KeyCode::SDLK_h:
-                shape_idx = (shape_idx + 1) % scene->models.size();
-                break;
-            case SDL_KeyCode::SDLK_j:
-                shape_idx = (shape_idx - 1 + static_cast<int>(scene->models.size())) % scene->models.size();
                 break;
             
             default:
@@ -195,7 +209,7 @@ int main() {
                     .write = true,
                     .test_mode = Renderer::DepthTestMode::LESS,
                 },
-                .mesh = &scene->models[shape_idx].mesh,
+                .mesh = &box_mesh,
                 .texture = &brick_texture,
                 .transform = proj_mat * view_mat * model_mat,
             },
