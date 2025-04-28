@@ -177,8 +177,6 @@ int main() {
         auto model_mat = glm::identity<glm::mat4>();
         model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
         model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
-        model_mat = glm::rotate(model_mat, y_rotation, glm::vec3(0.f, 1.f, 0.f));
-        model_mat = glm::rotate(model_mat, y_rotation*0.1f, glm::vec3(1.f, 1.f, 0.f));
         auto view_mat = glm::identity<glm::mat4>();
         view_mat = glm::translate(view_mat, camera_pos);
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
