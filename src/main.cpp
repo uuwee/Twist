@@ -82,8 +82,6 @@ int main() {
         .depth_buffer_view = depth_buffer_view,
     };
 
-    const auto mesh = Primitives::create_cube();
-
     std::filesystem::path brick_img_path = "./resource/brick_1024.jpg";
     Renderer::Texture<Renderer::R8G8B8A8_U> brick_texture{};
     brick_texture.mipmaps.push_back(Renderer::load_image(brick_img_path));
@@ -92,6 +90,8 @@ int main() {
     // ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/sibenik/sibenik.obj");
     auto box_mesh = Primitives::create_cube();
     rapidobj::Result result = rapidobj::ParseFile("./resource/sibenik/sibenik.obj");
+    // rapidobj::Result result = rapidobj::ParseFile("./resource/San_Miguel/san-miguel.obj");
+    // rapidobj::Result result = rapidobj::ParseFile("./resource/camera/camera.obj");
     if (result.error){
         std::cerr << "Error parsing OBJ file: " << result.error.code.message() << "\n";
         return -1;
@@ -103,35 +103,75 @@ int main() {
         return -1;
     }
 
-    // std::vector<Renderer::Mesh> meshes{};
-    for (const auto& shape : result.shapes) {
-        std::cout << "Shape name: " << shape.name << "\n";
-        
+    struct Mesh {
+        std::vector<Renderer::Vertex> vertices;
+        std::vector<std::uint32_t> indices;
+        rapidobj::Material material;
+    };
+
+    auto meshes = std::vector<Mesh>(result.materials.size());
+    for (std::size_t i = 0; i < result.materials.size(); i++){
+        meshes[i].material = result.materials[i];
+        meshes[i].vertices = {};
+        meshes[i].indices = {};
+        std::cout << "mat name: " << meshes[i].material.name << std::endl;
+    }
+    
+    // for (const auto& shape : result.shapes)
+     {
+        const auto& shape = result.shapes[0];
         const auto& mesh = shape.mesh;
-        size_t index_offset = 0;
-        std::int32_t prev_material_id = -1;
-        for (size_t i = 0; i < mesh.num_face_vertices.size(); i++) {
-            const auto& face = mesh.num_face_vertices[i];
-            if (face != 3) {
-                std::cerr << "Warning: Non-triangle face found in OBJ file." << std::endl;
-                continue;
-            }
 
-            const auto& v0 = mesh.indices[index_offset++];
-            const auto& v1 = mesh.indices[index_offset++];
-            const auto& v2 = mesh.indices[index_offset++];
+        for (std::size_t i = 0; i < mesh.num_face_vertices.size(); i++){
+            const auto& mat_id = mesh.material_ids[i];
 
-            const auto& material_id = mesh.material_ids[i];
+            const size_t size = meshes[mat_id].indices.size();
+            meshes[mat_id].indices.push_back(static_cast<std::uint32_t>(size) + 0);
+            meshes[mat_id].indices.push_back(static_cast<std::uint32_t>(size) + 2);
+            meshes[mat_id].indices.push_back(static_cast<std::uint32_t>(size) + 1);
 
-            if (prev_material_id == material_id) {
-                
-            }
-            else{
-                // meshes.push_back({});
-                // meshes.back().
-            }
+            meshes[mat_id].vertices.push_back(
+                {glm::vec4{
+                    result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 0],
+                    result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 1],
+                    result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 2],
+                    1.f
+                }, glm::vec2{
+                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index + 0],
+                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index + 1]
+                }}
+            );
+            meshes[mat_id].vertices.push_back(
+                {glm::vec4{
+                    result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 0],
+                    result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 1],
+                    result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 2],
+                    1.f
+                }, glm::vec2{
+                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index + 0],
+                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index + 1]
+                }}
+            );
+            meshes[mat_id].vertices.push_back(
+                {glm::vec4{
+                    result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 0],
+                    result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 1],
+                    result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 2],
+                    1.f
+                }, glm::vec2{
+                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index + 0],
+                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index + 1]
+                }}
+            );
         }
     }
+
+    std::cout << "Loaded " << meshes.size() << " materials." << std::endl;
+    
+    for (const auto& mesh : meshes) {
+        std::cout << "Material: " << mesh.material.name << ", vertices: " << mesh.vertices.size() << ", indices: " << mesh.indices.size() << "\n";
+    }
+
     
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -142,10 +182,10 @@ int main() {
     bool running = true;
     bool dump_image = false;
 
-    int shape_idx = 0;
     glm::vec3 camera_pos = {0.f, 0.f, -1.f};
     float y_rotation = 0.f;
     glm::vec2 mouse_pos = {0.f, 0.f};
+    int shape_idx = 0;
 
     while(running) {
         for (SDL_Event event; SDL_PollEvent(&event); ) switch (event.type)
@@ -179,6 +219,13 @@ int main() {
                 break;
             case SDL_KeyCode::SDLK_e:
                 camera_pos.z += 0.1f;
+                break;
+
+            case SDL_KeyCode::SDLK_j:
+                shape_idx = (shape_idx + 1) % static_cast<int>(meshes.size());
+                break;
+            case SDL_KeyCode::SDLK_k:
+                shape_idx = (shape_idx - 1 + static_cast<int>(meshes.size())) % static_cast<int>(meshes.size());
                 break;
             
             default:
@@ -218,6 +265,7 @@ int main() {
 
         y_rotation += delta_time;
         auto model_mat = glm::identity<glm::mat4>();
+        model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
         model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
         model_mat = glm::rotate(model_mat, y_rotation, glm::vec3(0.f, 1.f, 0.f));
         model_mat = glm::rotate(model_mat, y_rotation*0.1f, glm::vec3(1.f, 1.f, 0.f));
@@ -232,8 +280,8 @@ int main() {
                     .write = true,
                     .test_mode = Renderer::DepthTestMode::LESS,
                 },
-                .vertex_buffer = &box_mesh.vertex,
-                .index_buffer = &box_mesh.index,
+                .vertex_buffer = &meshes[shape_idx].vertices,
+                .index_buffer = &meshes[shape_idx].indices,
                 .texture = &brick_texture,
                 .transform = proj_mat * view_mat * model_mat,
             },
