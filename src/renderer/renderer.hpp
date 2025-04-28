@@ -429,38 +429,38 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                 mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
                             }
 
-                            // tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
-                            // tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
+                            tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
+                            tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
 
-                            // if (mipmap->width == 1 || mipmap->height == 1){
-                            //     int ix = static_cast<int>(std::floor(tc.x));
-                            //     int iy = static_cast<int>(std::floor(tc.y));
+                            if (mipmap->width == 1 || mipmap->height == 1){
+                                int ix = static_cast<int>(std::floor(tc.x));
+                                int iy = static_cast<int>(std::floor(tc.y));
 
-                            //     auto texel = mipmap->at(ix, iy);
-                            //     color = to_vec4(texel);
-                            // }
-                            // else {
-                            //     tc.x -= 0.5f;
-                            //     tc.y -= 0.5f;
+                                auto texel = mipmap->at(ix, iy);
+                                color = to_vec4(texel);
+                            }
+                            else {
+                                tc.x -= 0.5f;
+                                tc.y -= 0.5f;
 
-                            //     tc.x = std::max<float>(0.f, std::min<float>(mipmap->width - 1.f, tc.x));
-                            //     tc.y = std::max<float>(0.f, std::min<float>(mipmap->height - 1.f, tc.y));
+                                tc.x = std::max<float>(0.f, std::min<float>(mipmap->width - 1.f, tc.x));
+                                tc.y = std::max<float>(0.f, std::min<float>(mipmap->height - 1.f, tc.y));
 
-                            //     int ix = std::min<int>(mipmap->width - 2, static_cast<int>(std::floor(tc.x)));
-                            //     int iy = std::min<int>(mipmap->height - 2, static_cast<int>(std::floor(tc.y)));
+                                int ix = std::min<int>(mipmap->width - 2, static_cast<int>(std::floor(tc.x)));
+                                int iy = std::min<int>(mipmap->height - 2, static_cast<int>(std::floor(tc.y)));
 
-                            //     tc.x -= ix;
-                            //     tc.y -= iy;
+                                tc.x -= ix;
+                                tc.y -= iy;
 
-                            //     std::array<glm::vec4, 4>samples = {
-                            //         to_vec4(mipmap->at(ix + 0, iy + 0)),
-                            //         to_vec4(mipmap->at(ix + 1, iy + 0)),
-                            //         to_vec4(mipmap->at(ix + 0, iy + 1)),
-                            //         to_vec4(mipmap->at(ix + 1, iy + 1)),
-                            //     };
+                                std::array<glm::vec4, 4>samples = {
+                                    to_vec4(mipmap->at(ix + 0, iy + 0)),
+                                    to_vec4(mipmap->at(ix + 1, iy + 0)),
+                                    to_vec4(mipmap->at(ix + 0, iy + 1)),
+                                    to_vec4(mipmap->at(ix + 1, iy + 1)),
+                                };
 
-                            //     color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
-                            // }
+                                color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
+                            }
 
                             frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(color);
                             // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));

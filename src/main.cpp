@@ -117,9 +117,8 @@ int main() {
         std::cout << "mat name: " << meshes[i].material.name << std::endl;
     }
     
-    // for (const auto& shape : result.shapes)
+    for (const auto& shape : result.shapes)
      {
-        const auto& shape = result.shapes[0];
         const auto& mesh = shape.mesh;
 
         for (std::size_t i = 0; i < mesh.num_face_vertices.size(); i++){
@@ -137,8 +136,8 @@ int main() {
                     result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 2],
                     1.f
                 }, glm::vec2{
-                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index + 0],
-                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index + 1]
+                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index * 2 + 0],
+                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index * 2 + 1]
                 }}
             );
             meshes[mat_id].vertices.push_back(
@@ -148,8 +147,8 @@ int main() {
                     result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 2],
                     1.f
                 }, glm::vec2{
-                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index + 0],
-                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index + 1]
+                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index * 2 + 0],
+                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index * 2 + 1]
                 }}
             );
             meshes[mat_id].vertices.push_back(
@@ -159,8 +158,8 @@ int main() {
                     result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 2],
                     1.f
                 }, glm::vec2{
-                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index + 0],
-                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index + 1]
+                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index * 2 + 0],
+                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index * 2 + 1]
                 }}
             );
         }
