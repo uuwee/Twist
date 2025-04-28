@@ -35,15 +35,7 @@ enum class CullMode{
 
 struct Vertex{
     glm::vec4 position;
-    // glm::vec3 normal;
     glm::vec2 texcoord0;
-};
-
-struct Mesh {
-    std::vector<glm::vec3> vertex;
-    // std::vector<glm::vec3> normal;
-    std::vector<glm::vec2> texcoord0;
-    std::vector<std::uint32_t> index;
 };
 
 struct ViewPort{
@@ -134,7 +126,8 @@ struct Texture {
 struct DrawCall {
     CullMode cull_mode = CullMode::NONE;
     DepthSettings depth_settings = {};
-    Mesh* mesh = nullptr;
+    std::vector<Vertex>* vertex_buffer = nullptr;
+    std::vector<std::uint32_t>* index_buffer = nullptr;
     Texture<R8G8B8A8_U>* texture = nullptr;
     glm::mat4 transform = glm::identity<glm::mat4>();
 };
@@ -295,28 +288,20 @@ inline glm::vec4 perspective_divide(glm::vec4 const& v) {
 }
 
 void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& viewport) {
-    for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.mesh->index.size(); idx_idx+= 3){
-        std::uint32_t i0 = command.mesh->index[idx_idx + 0];
-        std::uint32_t i1 = command.mesh->index[idx_idx + 1];
-        std::uint32_t i2 = command.mesh->index[idx_idx + 2];
+    for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.index_buffer->size(); idx_idx+= 3){
+        std::uint32_t i0 = command.index_buffer->at(idx_idx + 0);
+        std::uint32_t i1 = command.index_buffer->at(idx_idx + 1);
+        std::uint32_t i2 = command.index_buffer->at(idx_idx + 2);
 
         Vertex vertices[12];
-        vertices[0] = Vertex{
-            .position = command.transform * glm::vec4(command.mesh->vertex[i0], 1.0), 
-            // .normal = command.mesh->normal[i0], 
-            .texcoord0 = command.mesh->texcoord0[i0]
-        };
-        vertices[1] = Vertex{
-            .position = command.transform * glm::vec4(command.mesh->vertex[i1], 1.0), 
-            // .normal = command.mesh->normal[i1], 
-            .texcoord0 = command.mesh->texcoord0[i1]
-        };
-        vertices[2] = Vertex{
-            .position = command.transform * glm::vec4(command.mesh->vertex[i2], 1.0), 
-            // .normal = command.mesh->normal[i2], 
-            .texcoord0 = command.mesh->texcoord0[i2]
-        };
+        vertices[0] = command.vertex_buffer->at(i0);
+        vertices[1] = command.vertex_buffer->at(i1);
+        vertices[2] = command.vertex_buffer->at(i2);
 
+        vertices[0].position = command.transform * vertices[0].position;
+        vertices[1].position = command.transform * vertices[1].position;
+        vertices[2].position = command.transform * vertices[2].position;
+        
         // this clipping algorithm is taken from https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html#section-clipping-triangles-implementation
         auto end = clip_triangle(vertices, vertices + 3);
 

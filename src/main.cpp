@@ -82,7 +82,7 @@ int main() {
         .depth_buffer_view = depth_buffer_view,
     };
 
-    Renderer::Mesh mesh = Primitives::create_cube();
+    const auto mesh = Primitives::create_cube();
 
     std::filesystem::path brick_img_path = "./resource/brick_1024.jpg";
     Renderer::Texture<Renderer::R8G8B8A8_U> brick_texture{};
@@ -103,12 +103,35 @@ int main() {
         return -1;
     }
 
-    size_t num_triangles {};
+    // std::vector<Renderer::Mesh> meshes{};
     for (const auto& shape : result.shapes) {
-        num_triangles += shape.mesh.num_face_vertices.size();
-    }
+        std::cout << "Shape name: " << shape.name << "\n";
+        
+        const auto& mesh = shape.mesh;
+        size_t index_offset = 0;
+        std::int32_t prev_material_id = -1;
+        for (size_t i = 0; i < mesh.num_face_vertices.size(); i++) {
+            const auto& face = mesh.num_face_vertices[i];
+            if (face != 3) {
+                std::cerr << "Warning: Non-triangle face found in OBJ file." << std::endl;
+                continue;
+            }
 
-    std::cout << "shapes: " << result.shapes.size() << ", triangles: " << num_triangles << "\n";
+            const auto& v0 = mesh.indices[index_offset++];
+            const auto& v1 = mesh.indices[index_offset++];
+            const auto& v2 = mesh.indices[index_offset++];
+
+            const auto& material_id = mesh.material_ids[i];
+
+            if (prev_material_id == material_id) {
+                
+            }
+            else{
+                // meshes.push_back({});
+                // meshes.back().
+            }
+        }
+    }
     
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -209,7 +232,8 @@ int main() {
                     .write = true,
                     .test_mode = Renderer::DepthTestMode::LESS,
                 },
-                .mesh = &box_mesh,
+                .vertex_buffer = &box_mesh.vertex,
+                .index_buffer = &box_mesh.index,
                 .texture = &brick_texture,
                 .transform = proj_mat * view_mat * model_mat,
             },
