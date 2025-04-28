@@ -42,7 +42,7 @@ namespace ModelLoader{
             scene->meshes[i].indices = {};
             if (scene->meshes[i].material.diffuse_texname != ""){
                 std::cout << "load texture:" << scene->meshes[i].material.diffuse_texname << std::endl;
-                auto tex = Renderer::load_image("resource/sibenik/" + scene->meshes[i].material.diffuse_texname);
+                auto tex = Renderer::load_image(path.parent_path() / scene->meshes[i].material.diffuse_texname);
                 scene->meshes[i].texture = Renderer::Texture<Renderer::R8G8B8A8_U>();
                 scene->meshes[i].texture->mipmaps.push_back( tex);
                 Renderer::generate_mipmaps(&scene->meshes[i].texture.value());
