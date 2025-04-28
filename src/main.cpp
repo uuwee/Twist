@@ -87,91 +87,12 @@ int main() {
     brick_texture.mipmaps.push_back(Renderer::load_image(brick_img_path));
     Renderer::generate_mipmaps(&brick_texture);
 
-    // ModelLoader::Scene* scene = ModelLoader::load_scene("./resource/sibenik/sibenik.obj");
     auto box_mesh = Primitives::create_cube();
-    rapidobj::Result result = rapidobj::ParseFile("./resource/sibenik/sibenik.obj");
-    // rapidobj::Result result = rapidobj::ParseFile("./resource/San_Miguel/san-miguel.obj");
-    // rapidobj::Result result = rapidobj::ParseFile("./resource/camera/camera.obj");
-    if (result.error){
-        std::cerr << "Error parsing OBJ file: " << result.error.code.message() << "\n";
-        return -1;
-    }
-    bool success = rapidobj::Triangulate(result);
 
-    if (!success) {
-        std::cerr << "Error triangulating OBJ file: " << result.error.code.message() << "\n";
-        return -1;
-    }
+    ModelLoader::Scene scene;
+    ModelLoader::load_scene(&scene, "./resource/sibenik/sibenik.obj");
+    // ModelLoader::load_scene(&scene, "./resource/camera/camera.obj");
 
-    struct Mesh {
-        std::vector<Renderer::Vertex> vertices;
-        std::vector<std::uint32_t> indices;
-        rapidobj::Material material;
-    };
-
-    auto meshes = std::vector<Mesh>(result.materials.size());
-    for (std::size_t i = 0; i < result.materials.size(); i++){
-        meshes[i].material = result.materials[i];
-        meshes[i].vertices = {};
-        meshes[i].indices = {};
-        std::cout << "mat name: " << meshes[i].material.name << std::endl;
-    }
-    
-    for (const auto& shape : result.shapes)
-     {
-        const auto& mesh = shape.mesh;
-
-        for (std::size_t i = 0; i < mesh.num_face_vertices.size(); i++){
-            const auto& mat_id = mesh.material_ids[i];
-
-            const size_t size = meshes[mat_id].indices.size();
-            meshes[mat_id].indices.push_back(static_cast<std::uint32_t>(size) + 0);
-            meshes[mat_id].indices.push_back(static_cast<std::uint32_t>(size) + 2);
-            meshes[mat_id].indices.push_back(static_cast<std::uint32_t>(size) + 1);
-
-            meshes[mat_id].vertices.push_back(
-                {glm::vec4{
-                    result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 0],
-                    result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 1],
-                    result.attributes.positions[mesh.indices[i * 3 + 0].position_index * 3 + 2],
-                    1.f
-                }, glm::vec2{
-                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index * 2 + 0],
-                    result.attributes.texcoords[mesh.indices[i * 3 + 0].texcoord_index * 2 + 1]
-                }}
-            );
-            meshes[mat_id].vertices.push_back(
-                {glm::vec4{
-                    result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 0],
-                    result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 1],
-                    result.attributes.positions[mesh.indices[i * 3 + 1].position_index * 3 + 2],
-                    1.f
-                }, glm::vec2{
-                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index * 2 + 0],
-                    result.attributes.texcoords[mesh.indices[i * 3 + 1].texcoord_index * 2 + 1]
-                }}
-            );
-            meshes[mat_id].vertices.push_back(
-                {glm::vec4{
-                    result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 0],
-                    result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 1],
-                    result.attributes.positions[mesh.indices[i * 3 + 2].position_index * 3 + 2],
-                    1.f
-                }, glm::vec2{
-                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index * 2 + 0],
-                    result.attributes.texcoords[mesh.indices[i * 3 + 2].texcoord_index * 2 + 1]
-                }}
-            );
-        }
-    }
-
-    std::cout << "Loaded " << meshes.size() << " materials." << std::endl;
-    
-    for (const auto& mesh : meshes) {
-        std::cout << "Material: " << mesh.material.name << ", vertices: " << mesh.vertices.size() << ", indices: " << mesh.indices.size() << "\n";
-    }
-
-    
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
     // timer
@@ -221,10 +142,10 @@ int main() {
                 break;
 
             case SDL_KeyCode::SDLK_j:
-                shape_idx = (shape_idx + 1) % static_cast<int>(meshes.size());
+                shape_idx = (shape_idx + 1) % static_cast<int>(scene.meshes.size());
                 break;
             case SDL_KeyCode::SDLK_k:
-                shape_idx = (shape_idx - 1 + static_cast<int>(meshes.size())) % static_cast<int>(meshes.size());
+                shape_idx = (shape_idx - 1 + static_cast<int>(scene.meshes.size())) % static_cast<int>(scene.meshes.size());
                 break;
             
             default:
@@ -279,9 +200,9 @@ int main() {
                     .write = true,
                     .test_mode = Renderer::DepthTestMode::LESS,
                 },
-                .vertex_buffer = &meshes[shape_idx].vertices,
-                .index_buffer = &meshes[shape_idx].indices,
-                .texture = &brick_texture,
+                .vertex_buffer = &scene.meshes[shape_idx].vertices,
+                .index_buffer = &scene.meshes[shape_idx].indices,
+                .texture = scene.meshes[shape_idx].texture.has_value() ? &scene.meshes[shape_idx].texture.value() : &brick_texture,
                 .transform = proj_mat * view_mat * model_mat,
             },
             viewport  

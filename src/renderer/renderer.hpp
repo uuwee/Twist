@@ -388,7 +388,11 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             l1[dy][dx] /= lsum;
                             l2[dy][dx] /= lsum;
 
-                            tex_coord[dy][dx] = l0[dy][dx] * v0.texcoord0 + l1[dy][dx] * v1.texcoord0 + l2[dy][dx] * v2.texcoord0;
+                            auto uv = l0[dy][dx] * v0.texcoord0 + l1[dy][dx] * v1.texcoord0 + l2[dy][dx] * v2.texcoord0;
+                            float hoge;
+                            uv.x = fabs( modff(uv.x, &hoge));
+                            uv.y = fabs(modff(uv.y, &hoge));
+                            tex_coord[dy][dx] = uv;
                         }
                     }
 
@@ -436,6 +440,8 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                 int ix = static_cast<int>(std::floor(tc.x));
                                 int iy = static_cast<int>(std::floor(tc.y));
 
+                                ix = std::max(ix, 0);
+                                iy = std::max(iy, 0);
                                 auto texel = mipmap->at(ix, iy);
                                 color = to_vec4(texel);
                             }
@@ -463,6 +469,9 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             }
 
                             frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(color);
+                            
+
+                            // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(uv, 0.f, 1.f));
                             // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                         }
                     }
