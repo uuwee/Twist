@@ -192,21 +192,24 @@ int main() {
         auto view_mat = glm::identity<glm::mat4>();
         view_mat = glm::translate(view_mat, camera_pos);
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
-        draw(
-            &frame_buffer, 
-            {
-                .cull_mode = Renderer::CullMode::NONE,
-                .depth_settings = {
-                    .write = true,
-                    .test_mode = Renderer::DepthTestMode::LESS,
+
+        for (auto& mesh : scene.meshes) {
+            draw(
+                &frame_buffer, 
+                {
+                    .cull_mode = Renderer::CullMode::NONE,
+                    .depth_settings = {
+                        .write = true,
+                        .test_mode = Renderer::DepthTestMode::LESS,
+                    },
+                    .vertex_buffer = &mesh.vertices,
+                    .index_buffer = &mesh.indices,
+                    .texture = mesh.texture.has_value() ? &mesh.texture.value() : &brick_texture,
+                    .transform = proj_mat * view_mat * model_mat,
                 },
-                .vertex_buffer = &scene.meshes[shape_idx].vertices,
-                .index_buffer = &scene.meshes[shape_idx].indices,
-                .texture = scene.meshes[shape_idx].texture.has_value() ? &scene.meshes[shape_idx].texture.value() : &brick_texture,
-                .transform = proj_mat * view_mat * model_mat,
-            },
-            viewport  
-        );
+                viewport  
+            );
+        }
 
         SDL_Rect rect{
             .x = 0, .y = 0, .w = width, .h = height
