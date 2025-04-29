@@ -29,4 +29,4 @@ project "Twist"
         symbols "On"
 
 	filter "configurations:Release"
-		optimize "On"
+		optimize "Full"

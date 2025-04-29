@@ -87,7 +87,7 @@ int main() {
     auto box_mesh = Primitives::create_cube();
 
     ModelLoader::Scene scene;
-    ModelLoader::load_scene(&scene, "./resource/San_Miguel/san-miguel-low-poly.obj");
+    ModelLoader::load_scene(&scene, "./resource/sibenik/sibenik.obj");
 
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 

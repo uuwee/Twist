@@ -33,11 +33,6 @@ enum class CullMode{
     NONE, CLOCK_WISE, COUNTER_CLOCK_WISE,
 };
 
-struct Vertex{
-    glm::vec4 position;
-    glm::vec2 texcoord0;
-};
-
 struct ViewPort{
     std::uint32_t x, y, width, height;
 };
@@ -121,6 +116,11 @@ ImageView<PixelType> create_imageview(const Image<PixelType>& image, const uint3
 template<typename PixelType>
 struct Texture {
     std::vector<Image<PixelType>> mipmaps;
+};
+
+struct Vertex {
+    glm::vec4 position;
+    glm::vec2 texcoord0;
 };
 
 struct DrawCall {
