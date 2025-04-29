@@ -75,22 +75,18 @@ int main() {
         .width = width, 
         .height = height,
     };
-    Renderer::ImageView<std::uint32_t> depth_buffer_view = create_imageview(depth_buffer, width, height);
+    auto depth_buffer_view = create_imageview(depth_buffer, width, height);
 
     Renderer::FrameBuffer frame_buffer = {
         .color_buffer_view = render_target_view,
         .depth_buffer_view = depth_buffer_view,
     };
 
-    std::filesystem::path brick_img_path = "./resource/brick_1024.jpg";
-    Renderer::Texture<Renderer::R8G8B8A8_U> brick_texture{};
-    brick_texture.mipmaps.push_back(Renderer::load_image(brick_img_path));
-    Renderer::generate_mipmaps(&brick_texture);
+    auto brick_texture = Renderer::load_texture("./resource/brick_1024.jpg");
 
     auto box_mesh = Primitives::create_cube();
 
     ModelLoader::Scene scene;
-    // ModelLoader::load_scene(&scene, "./resource/sibenik/sibenik.obj");
     ModelLoader::load_scene(&scene, "./resource/San_Miguel/san-miguel-low-poly.obj");
 
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};

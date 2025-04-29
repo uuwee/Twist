@@ -552,5 +552,11 @@ void generate_mipmaps(Renderer::Texture<Renderer::R8G8B8A8_U>* texture){
         texture->mipmaps.push_back(std::move(next_level));
     }
 }
-       
+ 
+Texture<R8G8B8A8_U> load_texture(const std::filesystem::path& path) {
+    Texture<R8G8B8A8_U> result{};
+    result.mipmaps.push_back(load_image(path));
+    generate_mipmaps(&result);
+    return result;
+}
 }
