@@ -160,7 +160,6 @@ int main() {
         .height = shadow_map_height,
     };
     auto shadow_proj = glm::ortho<float>(-50, 50, -50, 50, 0.1f, 100.f);
-    // auto shadow_proj = glm::ortho<float>(-10.f, 10.f, -10.f, 10.f, 0.1f, 100.f);
     auto shadow_view = glm::lookAt(light_pos, light_dir, glm::vec3(1.f, 0.f, 0.f));
     auto model_mat = glm::identity<glm::mat4>();
         model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
@@ -176,7 +175,7 @@ int main() {
                 },
                 .vertex_buffer = &mesh.vertices,
                 .index_buffer = &mesh.indices,
-                .texture = &brick_texture,
+                .texture = nullptr,
                 .world_transform = model_mat,
                 .vp_transform = shadow_proj * shadow_view,
             },
@@ -267,7 +266,8 @@ int main() {
                     },
                     .vertex_buffer = &mesh.vertices,
                     .index_buffer = &mesh.indices,
-                    .texture = mesh.texture.has_value() ? &mesh.texture.value() : &brick_texture,
+                    .texture = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
+                    .material = &mesh.material,
                     .world_transform = model_mat,
                     .vp_transform = proj_mat * view_mat
                 },
@@ -282,7 +282,6 @@ int main() {
         SDL_UpdateWindowSurface(window);
 
         if (dump_image) {
-            // dump_surface_to_ppm(*draw_surface);
             dump_image_to_ppm(shadow_map, "./bin/shadow_map.ppm");
             dump_image = false;
         }
