@@ -38,6 +38,7 @@ namespace ModelLoader{
         scene->meshes.resize(result.materials.size());
         for (std::size_t i = 0; i < result.materials.size(); i++){
             scene->meshes[i].material = result.materials[i];
+            std::cout << "transmittance: " << scene->meshes[i].material.name << " : " << scene->meshes[i].material.transmittance.at(0) << ", " << scene->meshes[i].material.transmittance.at(1) << ", " << scene->meshes[i].material.transmittance.at(2) << "\n";
             scene->meshes[i].vertices = {};
             scene->meshes[i].indices = {};
             if (scene->meshes[i].material.diffuse_texname != ""){

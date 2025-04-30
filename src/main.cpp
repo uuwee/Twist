@@ -1,6 +1,8 @@
 #define GLM_FORCE_SWIZZLE
+#define GLM_ENABLE_EXPERIMENTAL
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtx/norm.hpp"
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include "stb_image/stb_image.h"
@@ -150,7 +152,7 @@ int main() {
 
     // shadow pass
     glm::vec3 light_dir = {0.f, 0.f, 0.f};
-    glm::vec3 light_pos = {0.f, 50.f, 0.f};
+    glm::vec3 light_pos = {10.f, 50.f, 10.f};
     clear(shadow_map_view, 0xFFFFFFFF);
 
     Renderer::ViewPort shadow_viewport{
@@ -165,6 +167,16 @@ int main() {
         model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
         model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
     for (auto& mesh: scene.meshes){
+        Renderer::Material mat {
+            .ambient = glm::vec3(mesh.material.ambient.at(0), mesh.material.ambient.at(1), mesh.material.ambient.at(2)),
+            .diffuse = glm::vec3(mesh.material.diffuse.at(0), mesh.material.diffuse.at(1), mesh.material.diffuse.at(2)),
+            .specular = glm::vec3(mesh.material.specular.at(0), mesh.material.specular.at(1), mesh.material.specular.at(2)),
+            .transmittance = glm::vec3(mesh.material.transmittance.at(0), mesh.material.transmittance.at(1), mesh.material.transmittance.at(2)),
+            .emission = glm::vec3(mesh.material.emission.at(0), mesh.material.emission.at(1), mesh.material.emission.at(2)),
+            .diffuse_tex = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
+        };
+        bool is_transparant = glm::length2(mat.transmittance) < 0.99f;
+        if (is_transparant) continue;
         draw(
             &shadow_frame_buffer,
             {
@@ -260,9 +272,12 @@ int main() {
                 .ambient = glm::vec3(mesh.material.ambient.at(0), mesh.material.ambient.at(1), mesh.material.ambient.at(2)),
                 .diffuse = glm::vec3(mesh.material.diffuse.at(0), mesh.material.diffuse.at(1), mesh.material.diffuse.at(2)),
                 .specular = glm::vec3(mesh.material.specular.at(0), mesh.material.specular.at(1), mesh.material.specular.at(2)),
+                .transmittance = glm::vec3(mesh.material.transmittance.at(0), mesh.material.transmittance.at(1), mesh.material.transmittance.at(2)),
                 .emission = glm::vec3(mesh.material.emission.at(0), mesh.material.emission.at(1), mesh.material.emission.at(2)),
                 .diffuse_tex = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
             };
+            bool is_transparant = glm::length2(mat.transmittance) < 0.99f;
+            if (is_transparant) continue;
             draw(
                 &frame_buffer, 
                 {

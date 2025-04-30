@@ -136,6 +136,13 @@ struct Material {
     Texture<R8G8B8A8_U>* specular_tex;
 };
 
+struct LightProbe {
+    glm::vec3 position;
+    float radius;
+    Image<R8G8B8A8_U> irradiance_map;
+    Texture<R8G8B8A8_U> radiance_map;
+};
+
 struct DrawCall {
     CullMode cull_mode = CullMode::NONE;
     DepthSettings depth_settings = {};
