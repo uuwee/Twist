@@ -124,13 +124,24 @@ struct Vertex {
     glm::vec2 texcoord0;
 };
 
+struct Material {
+    std::string name;
+    glm::vec3 ambient;
+    glm::vec3 diffuse;
+    glm::vec3 specular;
+    glm::vec3 transmittance;
+    glm::vec3 emission;
+    
+    Texture<R8G8B8A8_U>* diffuse_tex;
+    Texture<R8G8B8A8_U>* specular_tex;
+};
+
 struct DrawCall {
     CullMode cull_mode = CullMode::NONE;
     DepthSettings depth_settings = {};
     std::vector<Vertex>* vertex_buffer = nullptr;
     std::vector<std::uint32_t>* index_buffer = nullptr;
-    Texture<R8G8B8A8_U>* texture = nullptr;
-    rapidobj::Material* material = nullptr;
+    Material* material = nullptr;
     glm::mat4 world_transform = glm::identity<glm::mat4>();
     glm::mat4 vp_transform = glm::identity<glm::mat4>();
 };
@@ -497,7 +508,7 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                 
                                 glm::vec4 color = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
                                 
-                                auto albedo = command.texture;
+                                auto albedo = command.material->diffuse_tex;
                                 if (albedo != nullptr){
                                     glm::vec2 texture_scale(albedo->mipmaps[0].width, albedo->mipmaps[0].height);
                                     glm::vec2 tc = texture_scale * tex_coord[dy][dx];
@@ -558,7 +569,7 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                     // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                                 }
                                 else{
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(command.material->diffuse.at(0), command.material->diffuse.at(1), command.material->diffuse.at(2), 1.f));
+                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(command.material->specular, 1.f));
                                 }
                             }
                         }

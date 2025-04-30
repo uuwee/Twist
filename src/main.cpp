@@ -175,7 +175,7 @@ int main() {
                 },
                 .vertex_buffer = &mesh.vertices,
                 .index_buffer = &mesh.indices,
-                .texture = nullptr,
+                .material = nullptr,
                 .world_transform = model_mat,
                 .vp_transform = shadow_proj * shadow_view,
             },
@@ -256,6 +256,13 @@ int main() {
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
 
         for (auto& mesh : scene.meshes) {
+            Renderer::Material mat {
+                .ambient = glm::vec3(mesh.material.ambient.at(0), mesh.material.ambient.at(1), mesh.material.ambient.at(2)),
+                .diffuse = glm::vec3(mesh.material.diffuse.at(0), mesh.material.diffuse.at(1), mesh.material.diffuse.at(2)),
+                .specular = glm::vec3(mesh.material.specular.at(0), mesh.material.specular.at(1), mesh.material.specular.at(2)),
+                .emission = glm::vec3(mesh.material.emission.at(0), mesh.material.emission.at(1), mesh.material.emission.at(2)),
+                .diffuse_tex = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
+            };
             draw(
                 &frame_buffer, 
                 {
@@ -266,8 +273,7 @@ int main() {
                     },
                     .vertex_buffer = &mesh.vertices,
                     .index_buffer = &mesh.indices,
-                    .texture = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
-                    .material = &mesh.material,
+                    .material = &mat,
                     .world_transform = model_mat,
                     .vp_transform = proj_mat * view_mat
                 },
