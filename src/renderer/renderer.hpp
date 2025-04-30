@@ -385,8 +385,11 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
         vertices[1].position = command.world_transform * vertices[1].position;
         vertices[2].position = command.world_transform * vertices[2].position;
 
+        
         if (cull_triangle_by_world_aabb(vertices[0].position, vertices[1].position, vertices[2].position, frustum))
             continue;
+        
+        auto world_normal = glm::normalize( glm::cross(vertices[1].position.xyz - vertices[0].position.xyz, vertices[2].position.xyz - vertices[0].position.xyz));
 
         vertices[0].position = command.vp_transform * vertices[0].position;
         vertices[1].position = command.vp_transform * vertices[1].position;
@@ -564,12 +567,13 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                         color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
                                     }
                                     
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color);
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color);
+                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(world_normal, 1.f));
                                     // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(uv, 0.f, 1.f));
                                     // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                                 }
                                 else{
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(command.material->specular, 1.f));
+                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(command.material->diffuse, 1.f));
                                 }
                             }
                         }
