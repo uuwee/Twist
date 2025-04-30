@@ -87,7 +87,7 @@ int main() {
     auto box_mesh = Primitives::create_cube();
 
     ModelLoader::Scene scene;
-    ModelLoader::load_scene(&scene, "./resource/sibenik/sibenik.obj");
+    ModelLoader::load_scene(&scene, "./resource/San_Miguel/san-miguel-low-poly.obj");
 
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
@@ -189,7 +189,8 @@ int main() {
                     .vertex_buffer = &mesh.vertices,
                     .index_buffer = &mesh.indices,
                     .texture = mesh.texture.has_value() ? &mesh.texture.value() : &brick_texture,
-                    .transform = proj_mat * view_mat * model_mat,
+                    .world_transform = model_mat,
+                    .vp_transform = proj_mat * view_mat
                 },
                 viewport  
             );

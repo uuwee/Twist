@@ -129,7 +129,8 @@ struct DrawCall {
     std::vector<Vertex>* vertex_buffer = nullptr;
     std::vector<std::uint32_t>* index_buffer = nullptr;
     Texture<R8G8B8A8_U>* texture = nullptr;
-    glm::mat4 transform = glm::identity<glm::mat4>();
+    glm::mat4 world_transform = glm::identity<glm::mat4>();
+    glm::mat4 vp_transform = glm::identity<glm::mat4>();
 };
 
 struct FrameBuffer{
@@ -287,7 +288,68 @@ inline glm::vec4 perspective_divide(glm::vec4 const& v) {
     return glm::vec4(v.x * w, v.y * w, v.z * w, w);
 }
 
+using Plane = glm::vec4;
+using Frustum = std::array<Plane, 6>;
+
+inline Frustum extruct_frustum_planes(const glm::mat4& VP) {
+    Frustum P;
+    P[0] = Plane( VP[0][3] + VP[0][0],
+                  VP[1][3] + VP[1][0],
+                  VP[2][3] + VP[2][0],
+                  VP[3][3] + VP[3][0] );
+    P[1] = Plane( VP[0][3] - VP[0][0],
+                  VP[1][3] - VP[1][0],
+                  VP[2][3] - VP[2][0],
+                  VP[3][3] - VP[3][0] );
+    P[2] = Plane( VP[0][3] + VP[0][1],
+                  VP[1][3] + VP[1][1],
+                  VP[2][3] + VP[2][1],
+                  VP[3][3] + VP[3][1] );
+    P[3] = Plane( VP[0][3] - VP[0][1],
+                  VP[1][3] - VP[1][1],
+                  VP[2][3] - VP[2][1],
+                  VP[3][3] - VP[3][1] );
+    P[4] = Plane( VP[0][3] + VP[0][2],
+                  VP[1][3] + VP[1][2],
+                  VP[2][3] + VP[2][2],
+                  VP[3][3] + VP[3][2] );
+    P[5] = Plane( VP[0][3] - VP[0][2],
+                  VP[1][3] - VP[1][2],
+                  VP[2][3] - VP[2][2],
+                  VP[3][3] - VP[3][2] );
+    for (auto& pl : P) {
+        float len = glm::length(glm::vec3(pl));
+        pl /= len;
+    }
+    return P;
+}
+
+inline bool is_aabb_outside(const glm::vec3& minB, const glm::vec3& maxB, const Frustum& F) {
+    for (const auto& pl : F) {
+        glm::vec3 positive;
+        positive.x = (pl.x >= 0.f ? maxB.x : minB.x);
+        positive.y = (pl.y >= 0.f ? maxB.y : minB.y);
+        positive.z = (pl.z >= 0.f ? maxB.z : minB.z);
+        if (glm::dot(glm::vec3(pl), positive) + pl.w < 0.f)
+            return true;
+    }
+    return false;
+}
+
+bool cull_triangle_by_world_aabb(
+    const glm::vec3& v0,
+    const glm::vec3& v1,
+    const glm::vec3& v2,
+    const Frustum& frustum)
+{
+    glm::vec3 minB = glm::min(v0, glm::min(v1, v2));
+    glm::vec3 maxB = glm::max(v0, glm::max(v1, v2));
+    return is_aabb_outside(minB, maxB, frustum);
+}
+
 void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& viewport) {
+    const auto frustum = extruct_frustum_planes(command.vp_transform);
+
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.index_buffer->size(); idx_idx+= 3){
         std::uint32_t i0 = command.index_buffer->at(idx_idx + 0);
         std::uint32_t i1 = command.index_buffer->at(idx_idx + 1);
@@ -298,9 +360,16 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
         vertices[1] = command.vertex_buffer->at(i1);
         vertices[2] = command.vertex_buffer->at(i2);
 
-        vertices[0].position = command.transform * vertices[0].position;
-        vertices[1].position = command.transform * vertices[1].position;
-        vertices[2].position = command.transform * vertices[2].position;
+        vertices[0].position = command.world_transform * vertices[0].position;
+        vertices[1].position = command.world_transform * vertices[1].position;
+        vertices[2].position = command.world_transform * vertices[2].position;
+
+        if (cull_triangle_by_world_aabb(vertices[0].position, vertices[1].position, vertices[2].position, frustum))
+            continue;
+
+        vertices[0].position = command.vp_transform * vertices[0].position;
+        vertices[1].position = command.vp_transform * vertices[1].position;
+        vertices[2].position = command.vp_transform * vertices[2].position;
         
         // this clipping algorithm is taken from https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html#section-clipping-triangles-implementation
         auto end = clip_triangle(vertices, vertices + 3);
