@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <optional>
 
 namespace Renderer{
 struct R8G8B8A8_U{
@@ -134,9 +135,17 @@ struct DrawCall {
 };
 
 struct FrameBuffer{
-    ImageView<R8G8B8A8_U> color_buffer_view;
-    ImageView<std::uint32_t> depth_buffer_view;
+    std::optional<ImageView<R8G8B8A8_U>> color_buffer_view;
+    std::optional<ImageView<std::uint32_t>> depth_buffer_view;
 };
+std::uint32_t get_width(const FrameBuffer* fb){
+    if (fb->color_buffer_view.has_value()) return fb->color_buffer_view->width;
+    else return fb->depth_buffer_view->width;
+}
+std::uint32_t get_height(const FrameBuffer* fb){
+    if (fb->color_buffer_view.has_value()) return fb->color_buffer_view->height;
+    else return fb->depth_buffer_view->height;
+}
 
 template<typename PixelType>
 void clear(ImageView<PixelType>& image_view, PixelType color) {
@@ -414,9 +423,9 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
             }
 
             std::int32_t xmin = std::max<std::int32_t>(viewport.x, 0);
-            std::int32_t xmax = std::min<std::int32_t>(viewport.x + viewport.width, frame_buffer->color_buffer_view.width)-1;
+            std::int32_t xmax = std::min<std::int32_t>(viewport.x + viewport.width, get_width(frame_buffer))-1;
             std::int32_t ymin = std::max<std::int32_t>(viewport.y, 0);
-            std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, frame_buffer->color_buffer_view.height)-1;
+            std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, get_height(frame_buffer))-1;
 
             xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.position.x), std::floor(v1.position.x), std::floor(v2.position.x)})));  
             xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.position.x), std::ceil(v1.position.x), std::ceil(v2.position.x)})));
@@ -471,77 +480,83 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             if (det01p[dy][dx] < 0.f || det12p[dy][dx] < 0.f || det20p[dy][dx] < 0.f) continue;
 
                             auto ndc_position = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
-
-                            std::uint32_t depth = static_cast<uint32_t>((0.5f + 0.5f * ndc_position.z) * UINT32_MAX);
-
-                            if (!depth_test_passed(command.depth_settings.test_mode, depth, frame_buffer->depth_buffer_view.at(x + dx, y + dy)))
-                                continue;
-
-                            if (command.depth_settings.write)
-                                frame_buffer->depth_buffer_view.at(x + dx, y + dy) = depth;
-
-                            glm::vec4 color = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
-
-                            auto albedo = command.texture;
-                            glm::vec2 texture_scale(albedo->mipmaps[0].width, albedo->mipmaps[0].height);
-                            glm::vec2 tc = texture_scale * tex_coord[dy][dx];
-                            glm::vec2 tc_dx = texture_scale * (tex_coord[dy][1] - tex_coord[dy][0]);
-                            glm::vec2 tc_dy = texture_scale * (tex_coord[1][dx] - tex_coord[0][dx]);
-
-                            float texel_area = 1.f / std::abs(det(tc_dx, tc_dy));
-                            bool magnification = texel_area >= 1.f;
-
-                            Image<R8G8B8A8_U>* mipmap;
                             
-                            int mipmap_level = 0;
-                            if (magnification) {
-                                mipmap = &albedo->mipmaps[0];
+                            if (frame_buffer->depth_buffer_view.has_value()){
+
+                                std::uint32_t depth = static_cast<uint32_t>((0.5f + 0.5f * ndc_position.z) * UINT32_MAX);
+    
+                                if (!depth_test_passed(command.depth_settings.test_mode, depth, frame_buffer->depth_buffer_view->at(x + dx, y + dy)))
+                                    continue;
+    
+                                if (command.depth_settings.write)
+                                    frame_buffer->depth_buffer_view->at(x + dx, y + dy) = depth;
                             }
-                            else {
-                                mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
-                                mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
+                            if (frame_buffer->color_buffer_view.has_value()){
+
+                                
+                                glm::vec4 color = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
+                                
+                                auto albedo = command.texture;
+                                glm::vec2 texture_scale(albedo->mipmaps[0].width, albedo->mipmaps[0].height);
+                                glm::vec2 tc = texture_scale * tex_coord[dy][dx];
+                                glm::vec2 tc_dx = texture_scale * (tex_coord[dy][1] - tex_coord[dy][0]);
+                                glm::vec2 tc_dy = texture_scale * (tex_coord[1][dx] - tex_coord[0][dx]);
+                                
+                                float texel_area = 1.f / std::abs(det(tc_dx, tc_dy));
+                                bool magnification = texel_area >= 1.f;
+                                
+                                Image<R8G8B8A8_U>* mipmap;
+                                
+                                int mipmap_level = 0;
+                                if (magnification) {
+                                    mipmap = &albedo->mipmaps[0];
+                                }
+                                else {
+                                    mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
+                                    mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
+                                }
+                                
+                                tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
+                                tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
+                                
+                                if (mipmap->width == 1 || mipmap->height == 1){
+                                    int ix = static_cast<int>(std::floor(tc.x));
+                                    int iy = static_cast<int>(std::floor(tc.y));
+                                    
+                                    ix = std::max(ix, 0);
+                                    iy = std::max(iy, 0);
+                                    auto texel = mipmap->at(ix, iy);
+                                    color = to_vec4(texel);
+                                }
+                                else {
+                                    tc.x -= 0.5f;
+                                    tc.y -= 0.5f;
+                                    
+                                    tc.x = std::max<float>(0.f, std::min<float>(mipmap->width - 1.f, tc.x));
+                                    tc.y = std::max<float>(0.f, std::min<float>(mipmap->height - 1.f, tc.y));
+                                    
+                                    int ix = std::min<int>(mipmap->width - 2, static_cast<int>(std::floor(tc.x)));
+                                    int iy = std::min<int>(mipmap->height - 2, static_cast<int>(std::floor(tc.y)));
+                                    
+                                    tc.x -= ix;
+                                    tc.y -= iy;
+                                    
+                                    std::array<glm::vec4, 4>samples = {
+                                        to_vec4(mipmap->at(ix + 0, iy + 0)),
+                                        to_vec4(mipmap->at(ix + 1, iy + 0)),
+                                        to_vec4(mipmap->at(ix + 0, iy + 1)),
+                                        to_vec4(mipmap->at(ix + 1, iy + 1)),
+                                    };
+                                    
+                                    color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
+                                }
+                                
+                                frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color);
+                                
+                                
+                                // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(uv, 0.f, 1.f));
+                                // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                             }
-
-                            tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
-                            tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
-
-                            if (mipmap->width == 1 || mipmap->height == 1){
-                                int ix = static_cast<int>(std::floor(tc.x));
-                                int iy = static_cast<int>(std::floor(tc.y));
-
-                                ix = std::max(ix, 0);
-                                iy = std::max(iy, 0);
-                                auto texel = mipmap->at(ix, iy);
-                                color = to_vec4(texel);
-                            }
-                            else {
-                                tc.x -= 0.5f;
-                                tc.y -= 0.5f;
-
-                                tc.x = std::max<float>(0.f, std::min<float>(mipmap->width - 1.f, tc.x));
-                                tc.y = std::max<float>(0.f, std::min<float>(mipmap->height - 1.f, tc.y));
-
-                                int ix = std::min<int>(mipmap->width - 2, static_cast<int>(std::floor(tc.x)));
-                                int iy = std::min<int>(mipmap->height - 2, static_cast<int>(std::floor(tc.y)));
-
-                                tc.x -= ix;
-                                tc.y -= iy;
-
-                                std::array<glm::vec4, 4>samples = {
-                                    to_vec4(mipmap->at(ix + 0, iy + 0)),
-                                    to_vec4(mipmap->at(ix + 1, iy + 0)),
-                                    to_vec4(mipmap->at(ix + 0, iy + 1)),
-                                    to_vec4(mipmap->at(ix + 1, iy + 1)),
-                                };
-
-                                color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
-                            }
-
-                            frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(color);
-                            
-
-                            // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(uv, 0.f, 1.f));
-                            // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                         }
                     }
                     
