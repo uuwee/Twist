@@ -581,14 +581,14 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
 
                                     auto light_space_pos = command.light_mat * world_position;
                                     light_space_pos /= light_space_pos.w;
-                                    auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
+                                    auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
                                     // std::cout << closest_distance << "\n";
                                     auto current_distance = light_space_pos.z * 0.5f + 0.5f;
                                     float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;
                                     
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value));
+                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value));
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(light_space_pos);
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(closest_distance));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(closest_distance));
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(current_distance));
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(static_cast<float>(closest_distance) / UINT32_MAX));
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(world_normal, 1.f));
