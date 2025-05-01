@@ -379,7 +379,50 @@ bool cull_triangle_by_world_aabb(
     return is_aabb_outside(minB, maxB, frustum);
 }
 
-void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& viewport) {
+struct Uniform{
+	glm::mat4 model_mat;
+	glm::mat4 proj_view_mat;
+	const Material& material;
+};
+
+struct VertIn {
+	glm::vec4 model_pos;
+	glm::vec2 texcoord;
+};
+
+struct VertOut {
+	glm::vec4 model_pos;
+	glm::vec4 world_pos;
+	glm::vec4 ndc_pos;
+	glm::vec2 texcoord;
+};
+
+using FragIn = VertOut;
+
+struct FragOut {
+	glm::vec4 color;
+	std::uint32_t depth;
+};
+
+VertOut vertex_shader(const VertIn& in, const Uniform& uniform){
+	glm::vec4 world_pos = uniform.model_mat * in.model_pos;
+	glm::vec4 ndc_pos = uniform.proj_view_mat * world_pos;
+	return VertOut {
+		.model_pos = in.model_pos,
+		.world_pos = world_pos,
+		.ndc_pos = ndc_pos,
+		.texcoord = in.texcoord,
+	};
+}
+
+FragOut fragment_shader(const FragIn& in, const Uniform& uniform) {
+	return FragOut {
+		.color = glm::vec4(1.f, 1.f, 1.f, 1.f),
+        .depth = 0,
+	};
+}
+
+void draw(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport) {
     const auto frustum = extruct_frustum_planes(command.vp_transform);
 
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.index_buffer->size(); idx_idx+= 3){
