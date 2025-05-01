@@ -290,7 +290,9 @@ int main() {
                     .index_buffer = &mesh.indices,
                     .material = &mat,
                     .world_transform = model_mat,
-                    .vp_transform = proj_mat * view_mat
+                    .vp_transform = proj_mat * view_mat,
+                    .shadow_map = &shadow_map,
+                    .light_mat = shadow_proj * shadow_view,
                 },
                 viewport  
             );

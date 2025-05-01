@@ -120,8 +120,9 @@ struct Texture {
 };
 
 struct Vertex {
-    glm::vec4 position;
+    glm::vec4 ndc_position;
     glm::vec2 texcoord0;
+    glm::vec4 world_position;
 };
 
 struct Material {
@@ -151,6 +152,8 @@ struct DrawCall {
     Material* material = nullptr;
     glm::mat4 world_transform = glm::identity<glm::mat4>();
     glm::mat4 vp_transform = glm::identity<glm::mat4>();
+    Image<std::uint32_t>* shadow_map;
+    glm::mat4 light_mat = glm::identity<glm::mat4>();
 };
 
 struct FrameBuffer{
@@ -186,9 +189,10 @@ Vertex clip_intersect_edge(Vertex const & v0, Vertex const & v1, float value0, f
     float t = value0 / (value0 - value1);
 
     Vertex v;
-    v.position = (1.f - t) * v0.position + t * v1.position;
+    v.ndc_position = (1.f - t) * v0.ndc_position + t * v1.ndc_position;
     // v.normal = (1.f - t) * v0.normal + t * v1.normal;
     v.texcoord0 = (1.f - t) * v0.texcoord0 + t * v1.texcoord0;
+    v.world_position = (1.f - t) * v0.world_position + t * v1.world_position;
 
     return v;
 }
@@ -197,9 +201,9 @@ Vertex * clip_triangle(Vertex * triangle, glm::vec4 equation, Vertex * result)
 {
     float values[3] =
     {
-        glm::dot(triangle[0].position, equation),
-        glm::dot(triangle[1].position, equation),
-        glm::dot(triangle[2].position, equation),
+        glm::dot(triangle[0].ndc_position, equation),
+        glm::dot(triangle[1].ndc_position, equation),
+        glm::dot(triangle[2].ndc_position, equation),
     };
 
     std::uint8_t mask = (values[0] < 0.f ? 1 : 0) | (values[1] < 0.f ? 2 : 0) | (values[2] < 0.f ? 4 : 0);
@@ -388,19 +392,19 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
         vertices[1] = command.vertex_buffer->at(i1);
         vertices[2] = command.vertex_buffer->at(i2);
 
-        vertices[0].position = command.world_transform * vertices[0].position;
-        vertices[1].position = command.world_transform * vertices[1].position;
-        vertices[2].position = command.world_transform * vertices[2].position;
+        vertices[0].world_position = command.world_transform * vertices[0].world_position;
+        vertices[1].world_position = command.world_transform * vertices[1].world_position;
+        vertices[2].world_position = command.world_transform * vertices[2].world_position;
 
         
-        if (cull_triangle_by_world_aabb(vertices[0].position, vertices[1].position, vertices[2].position, frustum))
+        if (cull_triangle_by_world_aabb(vertices[0].world_position, vertices[1].world_position, vertices[2].world_position, frustum))
             continue;
         
-        auto world_normal = glm::normalize( glm::cross(vertices[1].position.xyz - vertices[0].position.xyz, vertices[2].position.xyz - vertices[0].position.xyz));
+        auto world_normal = glm::normalize( glm::cross(vertices[1].world_position.xyz - vertices[0].world_position.xyz, vertices[2].world_position.xyz - vertices[0].world_position.xyz));
 
-        vertices[0].position = command.vp_transform * vertices[0].position;
-        vertices[1].position = command.vp_transform * vertices[1].position;
-        vertices[2].position = command.vp_transform * vertices[2].position;
+        vertices[0].ndc_position = command.vp_transform * vertices[0].world_position;
+        vertices[1].ndc_position = command.vp_transform * vertices[1].world_position;
+        vertices[2].ndc_position = command.vp_transform * vertices[2].world_position;
         
         // this clipping algorithm is taken from https://lisyarus.github.io/blog/posts/implementing-a-tiny-cpu-rasterizer-part-5.html#section-clipping-triangles-implementation
         auto end = clip_triangle(vertices, vertices + 3);
@@ -410,15 +414,15 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
             Vertex v1 = triangle_begin[1];
             Vertex v2 = triangle_begin[2];
             
-            v0.position = perspective_divide(v0.position);
-            v1.position = perspective_divide(v1.position);
-            v2.position = perspective_divide(v2.position);
+            v0.ndc_position = perspective_divide(v0.ndc_position);
+            v1.ndc_position = perspective_divide(v1.ndc_position);
+            v2.ndc_position = perspective_divide(v2.ndc_position);
 
-            v0.position = apply(viewport, v0.position);
-            v1.position = apply(viewport, v1.position);
-            v2.position = apply(viewport, v2.position);
+            v0.ndc_position = apply(viewport, v0.ndc_position);
+            v1.ndc_position = apply(viewport, v1.ndc_position);
+            v2.ndc_position = apply(viewport, v2.ndc_position);
 
-            float det012 = det(v1.position.xy - v0.position.xy, v2.position.xy - v0.position.xy);
+            float det012 = det(v1.ndc_position.xy - v0.ndc_position.xy, v2.ndc_position.xy - v0.ndc_position.xy);
 
             const bool is_ccw = det012 < 0.f;
             switch (command.cull_mode) 
@@ -449,10 +453,10 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
             std::int32_t ymin = std::max<std::int32_t>(viewport.y, 0);
             std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, get_height(frame_buffer))-1;
 
-            xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.position.x), std::floor(v1.position.x), std::floor(v2.position.x)})));  
-            xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.position.x), std::ceil(v1.position.x), std::ceil(v2.position.x)})));
-            ymin = static_cast<int32_t>(std::max<float>(static_cast<float>(ymin), std::min({ std::floor(v0.position.y), std::floor(v1.position.y), std::floor(v2.position.y)})));
-            ymax = static_cast<int32_t>(std::min<float>(static_cast<float>(ymax), std::max({ std::ceil(v0.position.y), std::ceil(v1.position.y), std::ceil(v2.position.y)})));
+            xmin = static_cast<int32_t>(std::max<float>(static_cast<float>(xmin), std::min({std::floor(v0.ndc_position.x), std::floor(v1.ndc_position.x), std::floor(v2.ndc_position.x)})));  
+            xmax = static_cast<int32_t>(std::min<float>(static_cast<float>(xmax), std::max({ std::ceil(v0.ndc_position.x), std::ceil(v1.ndc_position.x), std::ceil(v2.ndc_position.x)})));
+            ymin = static_cast<int32_t>(std::max<float>(static_cast<float>(ymin), std::min({ std::floor(v0.ndc_position.y), std::floor(v1.ndc_position.y), std::floor(v2.ndc_position.y)})));
+            ymax = static_cast<int32_t>(std::min<float>(static_cast<float>(ymax), std::max({ std::ceil(v0.ndc_position.y), std::ceil(v1.ndc_position.y), std::ceil(v2.ndc_position.y)})));
 
             for (std::int32_t y = ymin; y < ymax; y+=2){
                 for (std::int32_t x = xmin; x < xmax; x+=2){
@@ -474,13 +478,13 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                 x+dx+0.5f, y+dy+0.5f, 0.f, 0.f
                             );
 
-                            det01p[dy][dx] = det(v1.position - v0.position, p - v0.position);
-                            det12p[dy][dx] = det(v2.position - v1.position, p - v1.position);
-                            det20p[dy][dx] = det(v0.position - v2.position, p - v2.position);
+                            det01p[dy][dx] = det(v1.ndc_position - v0.ndc_position, p - v0.ndc_position);
+                            det12p[dy][dx] = det(v2.ndc_position - v1.ndc_position, p - v1.ndc_position);
+                            det20p[dy][dx] = det(v0.ndc_position - v2.ndc_position, p - v2.ndc_position);
 
-                            l0[dy][dx] = det12p[dy][dx] / det012 * v0.position.w;
-                            l1[dy][dx] = det20p[dy][dx] / det012 * v1.position.w;
-                            l2[dy][dx] = det01p[dy][dx] / det012 * v2.position.w;
+                            l0[dy][dx] = det12p[dy][dx] / det012 * v0.ndc_position.w;
+                            l1[dy][dx] = det20p[dy][dx] / det012 * v1.ndc_position.w;
+                            l2[dy][dx] = det01p[dy][dx] / det012 * v2.ndc_position.w;
 
                             float lsum = l0[dy][dx] + l1[dy][dx] + l2[dy][dx];
 
@@ -501,7 +505,8 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             if (x + dx > xmax || y + dy > ymax) continue;
                             if (det01p[dy][dx] < 0.f || det12p[dy][dx] < 0.f || det20p[dy][dx] < 0.f) continue;
 
-                            auto ndc_position = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
+                            auto ndc_position = l0[dy][dx] * v0.ndc_position + l1[dy][dx] * v1.ndc_position + l2[dy][dx] * v2.ndc_position;
+                            auto world_position = l0[dy][dx] * v0.world_position + l1[dy][dx] * v1.world_position + l2[dy][dx] * v2.world_position;
                             
                             if (frame_buffer->depth_buffer_view.has_value()){
 
@@ -516,7 +521,7 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                             if (frame_buffer->color_buffer_view.has_value()){
 
                                 
-                                glm::vec4 color = l0[dy][dx] * v0.position + l1[dy][dx] * v1.position + l2[dy][dx] * v2.position;
+                                glm::vec4 color = l0[dy][dx] * v0.ndc_position + l1[dy][dx] * v1.ndc_position + l2[dy][dx] * v2.ndc_position;
                                 
                                 auto albedo = command.material->diffuse_tex;
                                 if (albedo != nullptr){
@@ -573,9 +578,20 @@ void draw(FrameBuffer* frame_buffer, DrawCall const& command, ViewPort const& vi
                                         
                                         color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
                                     }
+
+                                    auto light_space_pos = command.light_mat * world_position;
+                                    light_space_pos /= light_space_pos.w;
+                                    auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
+                                    // std::cout << closest_distance << "\n";
+                                    auto current_distance = light_space_pos.z * 0.5f + 0.5f;
+                                    float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;
                                     
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color);
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(world_normal, 1.f));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(light_space_pos);
+                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(closest_distance));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(current_distance));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(static_cast<float>(closest_distance) / UINT32_MAX));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(world_normal, 1.f));
                                     // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(uv, 0.f, 1.f));
                                     // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                                 }
