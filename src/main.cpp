@@ -96,6 +96,12 @@ int main() {
     constexpr int width = 600, height = 400;
 
     MAC_greet();
+    MAC::Image<std::uint32_t> test_mac_image{
+        .data = nullptr,
+        .width = 0,
+        .height = 0,
+    };
+    std::cout << sizeof(test_mac_image) << "\n";
 
     SDL_Init(SDL_INIT_VIDEO);
 
