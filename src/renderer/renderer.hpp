@@ -426,9 +426,22 @@ void draw(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& vi
     const auto frustum = extruct_frustum_planes(command.vp_transform);
 
     for (std::uint32_t idx_idx = 0; idx_idx + 2 < command.index_buffer->size(); idx_idx+= 3){
-        std::uint32_t i0 = command.index_buffer->at(idx_idx + 0);
-        std::uint32_t i1 = command.index_buffer->at(idx_idx + 1);
-        std::uint32_t i2 = command.index_buffer->at(idx_idx + 2);
+        const std::uint32_t i0 = command.index_buffer->at(idx_idx + 0);
+        const std::uint32_t i1 = command.index_buffer->at(idx_idx + 1);
+        const std::uint32_t i2 = command.index_buffer->at(idx_idx + 2);
+
+        const Vertex v0 = command.vertex_buffer->at(i0);
+        const Vertex v1 = command.vertex_buffer->at(i1);
+        const Vertex v2 = command.vertex_buffer->at(i2);
+
+        for (std::uint32_t i = 0; i < 3; i++){
+            const std::uint32_t idx = command.index_buffer->at(idx_idx + i);
+            const Vertex& vert = command.vertex_buffer->at(idx);
+            const VertIn vert_input {
+                .model_pos = glm::vec4(v0.position, 1.f),
+                .texcoord = vert.texcoord,
+            };
+        }
 
         Vertex vertices[12];
         vertices[0] = command.vertex_buffer->at(i0);
