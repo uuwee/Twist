@@ -6,7 +6,9 @@ workspace "Twist"
 project "Twist"
     kind "ConsoleApp"
     language "C++"
+    language "C"
     cppdialect "C++23"
+    cdialect "C23"
     targetdir "bin"
 
     fatalwarnings {"ALL"}
@@ -14,7 +16,8 @@ project "Twist"
     includedirs {"src", "third_party"}
 
     files {
-        "src/*",
+        "src/main.cpp",
+        "src/macaroni/rasterizer.c",
         "third_party/**",
     }
 

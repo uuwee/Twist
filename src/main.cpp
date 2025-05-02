@@ -11,6 +11,7 @@
 #include "renderer/renderer.hpp"
 #include "utils/primitive.hpp"
 #include "utils/model_loader.hpp"
+#include "macaroni/rasterizer.h"
 
 #include <iostream>
 #include <fstream>
@@ -93,6 +94,8 @@ void dump_image_to_ppm(Renderer::Image<std::uint32_t>& image, std::string const&
 int main() {
     std::cout << "hello, world!" << std::endl;
     constexpr int width = 600, height = 400;
+
+    MAC_greet();
 
     SDL_Init(SDL_INIT_VIDEO);
 
