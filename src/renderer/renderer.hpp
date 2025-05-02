@@ -438,8 +438,8 @@ void draw(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& vi
             const std::uint32_t idx = command.index_buffer->at(idx_idx + i);
             const Vertex& vert = command.vertex_buffer->at(idx);
             const VertIn vert_input {
-                .model_pos = glm::vec4(v0.position, 1.f),
-                .texcoord = vert.texcoord,
+                .model_pos = glm::vec4(v0.world_position),
+                .texcoord = vert.texcoord0,
             };
         }
 
