@@ -16,7 +16,7 @@ project "Twist"
     includedirs {"src", "third_party"}
 
     files {
-        "src/main.cpp",
+        "src/**.cpp",
         "src/macaroni/rasterizer.c",
         "third_party/**",
     }

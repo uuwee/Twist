@@ -19,18 +19,20 @@
 		struct Image {
 			T* data;
 			std::uint32_t width, height;
-			inline T& operator[](std::uint32_t x, std::uint32_t y){
-				if (0 <= x && x < width && 0 <= y && y < height){
-					return data[y * width + x];
-				}
-				return 0;
-			}
-			inline T operator[](std::uint32_t x, std::uint32_t y) const{
-				if (0 <= x && x < width && 0 <= y && y < height){
-					return data[y * width + x];
-				}
-				return 0;
-			}
+
+			// TODO: image[x, y] will be available in C++23
+			// inline T& operator[](std::uint32_t x, std::uint32_t y){
+			// 	if (0 <= x && x < width && 0 <= y && y < height){
+			// 		return data[y * width + x];
+			// 	}
+			// 	return 0;
+			// }
+			// inline T operator[](std::uint32_t x, std::uint32_t y) const{
+			// 	if (0 <= x && x < width && 0 <= y && y < height){
+			// 		return data[y * width + x];
+			// 	}
+			// 	return 0;
+			// }
 		};
 	}
 	#define MAC_Image(T) MAC::Image<T>
