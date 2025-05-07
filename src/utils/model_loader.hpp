@@ -6,18 +6,28 @@
 
 #include <string>
 #include <filesystem>
+#include <list>
 
 namespace ModelLoader{
     struct Mesh{
         std::vector<Renderer::Vertex> vertices;
         std::vector<std::uint32_t> indices;
-        rapidobj::Material material;
-        std::optional<Renderer::Texture<Renderer::R8G8B8A8_U>> texture;
+        Renderer::Material material;
     };
 
     struct Scene{
         std::vector<Mesh> meshes;
+        std::list<Renderer::Texture<Renderer::R8G8B8A8_U>> textures;
     };
+
+    Renderer::Texture<Renderer::R8G8B8A8_U>* load_texture_to_scene(Scene* scene, const std::filesystem::path& path){
+        Renderer::Image<Renderer::R8G8B8A8_U> image = Renderer::load_image(path);
+        scene->textures.push_back(Renderer::Texture<Renderer::R8G8B8A8_U>{});
+        auto& new_texture = scene->textures.back();
+        new_texture.mipmaps.push_back(image);
+        Renderer::generate_mipmaps(&new_texture);
+        return &new_texture;
+    }
 
     void load_scene(Scene* scene, std::filesystem::path const& path) {
         scene->meshes.clear();
@@ -37,16 +47,26 @@ namespace ModelLoader{
 
         scene->meshes.resize(result.materials.size());
         for (std::size_t i = 0; i < result.materials.size(); i++){
-            scene->meshes[i].material = result.materials[i];
-            std::cout << "transmittance: " << scene->meshes[i].material.name << " : " << scene->meshes[i].material.transmittance.at(0) << ", " << scene->meshes[i].material.transmittance.at(1) << ", " << scene->meshes[i].material.transmittance.at(2) << "\n";
-            scene->meshes[i].vertices = {};
-            scene->meshes[i].indices = {};
-            if (scene->meshes[i].material.diffuse_texname != ""){
-                std::cout << "load texture:" << scene->meshes[i].material.diffuse_texname << std::endl;
-                auto tex = Renderer::load_image(path.parent_path() / scene->meshes[i].material.diffuse_texname);
-                scene->meshes[i].texture = Renderer::Texture<Renderer::R8G8B8A8_U>();
-                scene->meshes[i].texture->mipmaps.push_back( tex);
-                Renderer::generate_mipmaps(&scene->meshes[i].texture.value());
+            Mesh& mesh = scene->meshes[i];
+            rapidobj::Material& obj_mat = result.materials[i];
+            mesh = Mesh{
+                .vertices = {},
+                .indices = {},
+                .material = Renderer::Material{
+                    .name = obj_mat.name,
+                    .ambient = glm::vec3(obj_mat.ambient.at(0), obj_mat.ambient.at(1), obj_mat.ambient.at(2)),
+                    .diffuse = glm::vec3(obj_mat.diffuse.at(0), obj_mat.diffuse.at(1), obj_mat.diffuse.at(2)),
+                    .specular = glm::vec3(obj_mat.specular.at(0), obj_mat.specular.at(1), obj_mat.specular.at(2)),
+                    .transmittance = glm::vec3(obj_mat.transmittance.at(0), obj_mat.transmittance.at(1), obj_mat.transmittance.at(2)),
+                    .emission = glm::vec3(obj_mat.emission.at(0), obj_mat.emission.at(1), obj_mat.emission.at(2)),
+                    .diffuse_tex = nullptr,
+                    .specular_tex = nullptr,
+                },
+            };
+            if (obj_mat.diffuse_texname != ""){
+                const std::filesystem::path tex_path = path.parent_path() / obj_mat.diffuse_texname;
+                Renderer::Texture<Renderer::R8G8B8A8_U>* tex = load_texture_to_scene(scene, tex_path);
+                mesh.material.diffuse_tex = tex;
             }
         }
 

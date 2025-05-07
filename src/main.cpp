@@ -96,12 +96,6 @@ int main() {
     constexpr int width = 600, height = 400;
 
     MAC_greet();
-    MAC::Image<std::uint32_t> test_mac_image{
-        .data = nullptr,
-        .width = 0,
-        .height = 0,
-    };
-    std::cout << sizeof(test_mac_image) << "\n";
 
     SDL_Init(SDL_INIT_VIDEO);
 
@@ -139,8 +133,6 @@ int main() {
         .depth_buffer_view = shadow_map_view,
     };
 
-    auto brick_texture = Renderer::load_texture("./resource/brick_1024.jpg");
-
     auto box_mesh = Primitives::create_cube();
 
     ModelLoader::Scene scene;
@@ -176,15 +168,7 @@ int main() {
         model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
         model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
     for (auto& mesh: scene.meshes){
-        Renderer::Material mat {
-            .ambient = glm::vec3(mesh.material.ambient.at(0), mesh.material.ambient.at(1), mesh.material.ambient.at(2)),
-            .diffuse = glm::vec3(mesh.material.diffuse.at(0), mesh.material.diffuse.at(1), mesh.material.diffuse.at(2)),
-            .specular = glm::vec3(mesh.material.specular.at(0), mesh.material.specular.at(1), mesh.material.specular.at(2)),
-            .transmittance = glm::vec3(mesh.material.transmittance.at(0), mesh.material.transmittance.at(1), mesh.material.transmittance.at(2)),
-            .emission = glm::vec3(mesh.material.emission.at(0), mesh.material.emission.at(1), mesh.material.emission.at(2)),
-            .diffuse_tex = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
-        };
-        bool is_transparant = glm::length2(mat.transmittance) < 0.99f;
+        bool is_transparant = glm::length2(mesh.material.transmittance) < 0.99f;
         if (is_transparant) continue;
         draw(
             &shadow_frame_buffer,
@@ -277,15 +261,7 @@ int main() {
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
 
         for (auto& mesh : scene.meshes) {
-            Renderer::Material mat {
-                .ambient = glm::vec3(mesh.material.ambient.at(0), mesh.material.ambient.at(1), mesh.material.ambient.at(2)),
-                .diffuse = glm::vec3(mesh.material.diffuse.at(0), mesh.material.diffuse.at(1), mesh.material.diffuse.at(2)),
-                .specular = glm::vec3(mesh.material.specular.at(0), mesh.material.specular.at(1), mesh.material.specular.at(2)),
-                .transmittance = glm::vec3(mesh.material.transmittance.at(0), mesh.material.transmittance.at(1), mesh.material.transmittance.at(2)),
-                .emission = glm::vec3(mesh.material.emission.at(0), mesh.material.emission.at(1), mesh.material.emission.at(2)),
-                .diffuse_tex = mesh.texture.has_value() ? &mesh.texture.value() : nullptr,
-            };
-            bool is_transparant = glm::length2(mat.transmittance) < 0.99f;
+            bool is_transparant = glm::length2(mesh.material.transmittance) < 0.99f;
             if (is_transparant) continue;
             draw(
                 &frame_buffer, 
@@ -297,7 +273,7 @@ int main() {
                     },
                     .vertex_buffer = &mesh.vertices,
                     .index_buffer = &mesh.indices,
-                    .material = &mat,
+                    .material = &mesh.material,
                     .world_transform = model_mat,
                     .vp_transform = proj_mat * view_mat,
                     .shadow_map = &shadow_map,
