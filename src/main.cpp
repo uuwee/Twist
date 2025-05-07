@@ -34,7 +34,11 @@ struct LightProbe {
     std::array<Texture<R8G8B8A8_U>, 6> radiance_map;
 };
 
+void draw_light_probe(const Scene* scene, LightProbe* probe){
+    const glm::vec3 position = probe->position;
 
+    
+}
 
 int main() {
     std::cout << "hello, world!" << std::endl;
