@@ -496,16 +496,17 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                 auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
                                 // std::cout << closest_distance << "\n";
                                 auto current_distance = light_space_pos.z * 0.5f + 0.5f;
-                                float shadow_value = current_distance - 0.005f > closest_distance ? 0.5f : 0.f;
+                                float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;
 
-                                auto light_direction = glm::normalize(command.light_mat * glm::vec4(0.f, 0.f, 1.f, 0.f));
+                                auto light_direction = glm::normalize(glm::vec4(0.f, 0.f, -1.f, 0.f));
                                 auto light_normal = glm::normalize(command.light_mat * glm::vec4(world_normal, 0.f));
 
                                 auto light_dot = glm::dot(light_direction, light_normal);
-                                // if (light_dot < 0.f) light_dot = 0.f;
-                                light_dot = light_dot * 0.5f + 0.5f;
+                                if (light_dot < 0.f) light_dot = 0.f;
+                                // light_dot = light_dot * 0.5f + 0.5f;
 
                                 auto light_intensity =  light_dot;
+                                // auto light_intensity = 1.0f;
                                 // color *= ;
 
 

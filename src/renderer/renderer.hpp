@@ -119,6 +119,7 @@ struct DrawCall {
     glm::mat4 vp_transform = glm::identity<glm::mat4>();
     Image<std::uint32_t>* shadow_map;
     glm::mat4 light_mat = glm::identity<glm::mat4>();
+    glm::vec3 light_direction;
 };
 
 struct FrameBuffer{

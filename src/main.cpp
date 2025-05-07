@@ -154,8 +154,8 @@ int main() {
     float camera_speed = 1.f;
 
     // shadow pass
-    glm::vec3 light_dir = {0.f, 0.f, 0.f};
-    glm::vec3 light_pos = {10.f, 50.f, 10.f};
+    glm::vec3 light_lookat = {0.f, 0.f, 0.f};
+    glm::vec3 light_pos = {10.f, 50.f, -50.f};
     clear(shadow_map_view, 0xFFFFFFFF);
 
     Renderer::ViewPort shadow_viewport{
@@ -165,7 +165,7 @@ int main() {
         .height = shadow_map_height,
     };
     auto shadow_proj = glm::ortho<float>(-50, 50, -50, 50, 0.1f, 100.f);
-    auto shadow_view = glm::lookAt(light_pos, light_dir, glm::vec3(1.f, 0.f, 0.f));
+    auto shadow_view = glm::lookAt(light_pos, light_lookat, glm::vec3(1.f, 0.f, 0.f));
     auto model_mat = glm::identity<glm::mat4>();
         model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
         model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
@@ -175,7 +175,7 @@ int main() {
         draw(
             &shadow_frame_buffer,
             {
-                .cull_mode = Renderer::CullMode::NONE,
+                .cull_mode = Renderer::CullMode::CLOCK_WISE,
                 .depth_settings = {
                     .write = true,
                     .test_mode = Renderer::DepthTestMode::LESS,
@@ -269,7 +269,7 @@ int main() {
             draw(
                 &frame_buffer, 
                 {
-                    .cull_mode = Renderer::CullMode::NONE,
+                    .cull_mode = Renderer::CullMode::CLOCK_WISE,
                     .depth_settings = {
                         .write = true,
                         .test_mode = Renderer::DepthTestMode::LESS,
@@ -281,6 +281,7 @@ int main() {
                     .vp_transform = proj_mat * view_mat,
                     .shadow_map = &shadow_map,
                     .light_mat = shadow_proj * shadow_view,
+                    .light_direction = glm::normalize(light_lookat - light_pos),
                 },
                 viewport  
             );
