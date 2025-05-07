@@ -9,18 +9,7 @@
 #include <list>
 
 namespace ModelLoader{
-    struct Mesh{
-        std::vector<Renderer::Vertex> vertices;
-        std::vector<std::uint32_t> indices;
-        Renderer::Material material;
-    };
-
-    struct Scene{
-        std::vector<Mesh> meshes;
-        std::list<Renderer::Texture<Renderer::R8G8B8A8_U>> textures;
-    };
-
-    Renderer::Texture<Renderer::R8G8B8A8_U>* load_texture_to_scene(Scene* scene, const std::filesystem::path& path){
+    Renderer::Texture<Renderer::R8G8B8A8_U>* load_texture_to_scene(Renderer::Scene* scene, const std::filesystem::path& path){
         Renderer::Image<Renderer::R8G8B8A8_U> image = Renderer::load_image(path);
         scene->textures.push_back(Renderer::Texture<Renderer::R8G8B8A8_U>{});
         auto& new_texture = scene->textures.back();
@@ -29,7 +18,7 @@ namespace ModelLoader{
         return &new_texture;
     }
 
-    void load_scene(Scene* scene, std::filesystem::path const& path) {
+    void load_scene(Renderer::Scene* scene, std::filesystem::path const& path) {
         scene->meshes.clear();
         scene->meshes.shrink_to_fit();
 
@@ -47,9 +36,9 @@ namespace ModelLoader{
 
         scene->meshes.resize(result.materials.size());
         for (std::size_t i = 0; i < result.materials.size(); i++){
-            Mesh& mesh = scene->meshes[i];
+            Renderer::Mesh& mesh = scene->meshes[i];
             rapidobj::Material& obj_mat = result.materials[i];
-            mesh = Mesh{
+            mesh = Renderer::Mesh{
                 .vertices = {},
                 .indices = {},
                 .material = Renderer::Material{

@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <array>
 
 namespace Renderer{
 struct R8G8B8A8_U{
@@ -102,11 +103,15 @@ struct Material {
     Texture<R8G8B8A8_U>* specular_tex;
 };
 
-struct LightProbe {
-    glm::vec3 position;
-    float radius;
-    Image<R8G8B8A8_U> irradiance_map;
-    Texture<R8G8B8A8_U> radiance_map;
+struct Mesh{
+        std::vector<Renderer::Vertex> vertices;
+        std::vector<std::uint32_t> indices;
+        Renderer::Material material;
+};
+
+struct Scene{
+    std::vector<Mesh> meshes;
+    std::list<Renderer::Texture<Renderer::R8G8B8A8_U>> textures;
 };
 
 struct DrawCall {
