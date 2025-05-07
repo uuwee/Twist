@@ -414,8 +414,8 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                             if (x + dx > xmax || y + dy > ymax) continue;
                             if (det01p[dy][dx] < 0.f || det12p[dy][dx] < 0.f || det20p[dy][dx] < 0.f) continue;
 
-                            auto ndc_position = l0[dy][dx] * v0.ndc_position + l1[dy][dx] * v1.ndc_position + l2[dy][dx] * v2.ndc_position;
-                            auto world_position = l0[dy][dx] * v0.world_position + l1[dy][dx] * v1.world_position + l2[dy][dx] * v2.world_position;
+                            glm::vec4 ndc_position = l0[dy][dx] * v0.ndc_position + l1[dy][dx] * v1.ndc_position + l2[dy][dx] * v2.ndc_position;
+                            glm::vec4 world_position = l0[dy][dx] * v0.world_position + l1[dy][dx] * v1.world_position + l2[dy][dx] * v2.world_position;
                             
                             if (frame_buffer->depth_buffer_view.has_value()){
 
@@ -427,6 +427,7 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                 if (command.depth_settings.write)
                                     frame_buffer->depth_buffer_view->at(x + dx, y + dy) = depth;
                             }
+
                             if (frame_buffer->color_buffer_view.has_value()){
 
                                 glm::vec4 color = l0[dy][dx] * v0.ndc_position + l1[dy][dx] * v1.ndc_position + l2[dy][dx] * v2.ndc_position;
@@ -506,8 +507,8 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                 // light_dot = light_dot * 0.5f + 0.5f;
 
                                 auto light_intensity =  light_dot;
-                                // auto light_intensity = 1.0f;
-                                // color *= ;
+                                
+                                auto light_diffuse = glm::vec4(1.f) * (1.f - shadow_value) * color / 3.14f * light_intensity;
 
 
                                 frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value) * glm::vec4(light_intensity));
