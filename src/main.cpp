@@ -146,10 +146,12 @@ int main() {
     // state
     bool running = true;
     bool dump_image = false;
+    float time = 0.f;
 
     glm::vec3 camera_pos = {0.f, 0.f, -1.f};
     float y_rotation = 0.f;
     glm::vec2 mouse_pos = {0.f, 0.f};
+    float camera_speed = 1.f;
 
     // shadow pass
     glm::vec3 light_dir = {0.f, 0.f, 0.f};
@@ -204,22 +206,22 @@ int main() {
                 dump_image = true;
                 break;
             case SDL_KeyCode::SDLK_w:
-                camera_pos.y += 0.1f;
+                camera_pos.y -= camera_speed;
                 break;
             case SDL_KeyCode::SDLK_s:
-                camera_pos.y -= 0.1f;
+                camera_pos.y += camera_speed;
                 break;
             case SDL_KeyCode::SDLK_a:
-                camera_pos.x -= 0.1f;
+                camera_pos.x += camera_speed;
                 break;
             case SDL_KeyCode::SDLK_d:
-                camera_pos.x += 0.1f;
+                camera_pos.x -= camera_speed;
                 break;
             case SDL_KeyCode::SDLK_q:
-                camera_pos.z -= 0.1f;
+                camera_pos.z += camera_speed;
                 break;
             case SDL_KeyCode::SDLK_e:
-                camera_pos.z += 0.1f;
+                camera_pos.z -= camera_speed;
                 break;
             
             default:
@@ -238,6 +240,7 @@ int main() {
 
         auto now = std::chrono::high_resolution_clock::now();
         auto delta_time = std::chrono::duration<float>(now - last_frame_start).count();
+        time += delta_time;
         last_frame_start = now;
 
         std::ostringstream title;

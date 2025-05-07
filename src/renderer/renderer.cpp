@@ -494,8 +494,18 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                     // std::cout << closest_distance << "\n";
                                     auto current_distance = light_space_pos.z * 0.5f + 0.5f;
                                     float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;
+
+                                    auto light_direction = glm::normalize(command.light_mat * glm::vec4(0.f, 0.f, 1.f, 0.f));
+                                    auto light_normal = glm::normalize(command.light_mat * glm::vec4(world_normal, 0.f));
+
+                                    auto light_dot = glm::dot(light_direction, light_normal);
+                                    if (light_dot < 0.f) light_dot = 0.f;
+
+                                    auto light_intensity =  light_dot;
+                                    color *= glm::vec4(light_intensity);
                                     
                                     frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value));
+                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color);
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(light_space_pos);
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(closest_distance));
                                     // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(current_distance));
