@@ -429,12 +429,11 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                             }
                             if (frame_buffer->color_buffer_view.has_value()){
 
-                                
                                 glm::vec4 color = l0[dy][dx] * v0.ndc_position + l1[dy][dx] * v1.ndc_position + l2[dy][dx] * v2.ndc_position;
                                 
-                                auto albedo = command.material->diffuse_tex;
-                                if (albedo != nullptr){
-                                    glm::vec2 texture_scale(albedo->mipmaps[0].width, albedo->mipmaps[0].height);
+                                if (command.material->diffuse_tex != nullptr){
+                                    auto albedo_tex = command.material->diffuse_tex;
+                                    glm::vec2 texture_scale(albedo_tex->mipmaps[0].width, albedo_tex->mipmaps[0].height);
                                     glm::vec2 tc = texture_scale * tex_coord[dy][dx];
                                     glm::vec2 tc_dx = texture_scale * (tex_coord[dy][1] - tex_coord[dy][0]);
                                     glm::vec2 tc_dy = texture_scale * (tex_coord[1][dx] - tex_coord[0][dx]);
@@ -446,11 +445,11 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                     
                                     int mipmap_level = 0;
                                     if (magnification) {
-                                        mipmap = &albedo->mipmaps[0];
+                                        mipmap = &albedo_tex->mipmaps[0];
                                     }
                                     else {
                                         mipmap_level = static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
-                                        mipmap = &albedo->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo->mipmaps.size()) - 1)];
+                                        mipmap = &albedo_tex->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo_tex->mipmaps.size()) - 1)];
                                     }
                                     
                                     tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
@@ -487,36 +486,30 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                         
                                         color = (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
                                     }
-
-                                    auto light_space_pos = command.light_mat * world_position;
-                                    light_space_pos /= light_space_pos.w;
-                                    auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
-                                    // std::cout << closest_distance << "\n";
-                                    auto current_distance = light_space_pos.z * 0.5f + 0.5f;
-                                    float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;
-
-                                    auto light_direction = glm::normalize(command.light_mat * glm::vec4(0.f, 0.f, 1.f, 0.f));
-                                    auto light_normal = glm::normalize(command.light_mat * glm::vec4(world_normal, 0.f));
-
-                                    auto light_dot = glm::dot(light_direction, light_normal);
-                                    if (light_dot < 0.f) light_dot = 0.f;
-
-                                    auto light_intensity =  light_dot;
-                                    color *= glm::vec4(light_intensity);
-                                    
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value));
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color);
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(light_space_pos);
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(closest_distance));
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(current_distance));
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(static_cast<float>(closest_distance) / UINT32_MAX));
-                                    // frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(world_normal, 1.f));
-                                    // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(uv, 0.f, 1.f));
-                                    // frame_buffer->color_buffer_view.at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(glm::vec3(static_cast<float>(mipmap_level) / albedo->mipmaps.size()), 1.f));
                                 }
                                 else{
-                                    frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(glm::vec4(command.material->diffuse, 1.f));
+                                    color = glm::vec4(command.material->diffuse, 1.f);
                                 }
+
+                                auto light_space_pos = command.light_mat * world_position;
+                                light_space_pos /= light_space_pos.w;
+                                auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
+                                // std::cout << closest_distance << "\n";
+                                auto current_distance = light_space_pos.z * 0.5f + 0.5f;
+                                float shadow_value = current_distance - 0.005f > closest_distance ? 0.5f : 0.f;
+
+                                auto light_direction = glm::normalize(command.light_mat * glm::vec4(0.f, 0.f, 1.f, 0.f));
+                                auto light_normal = glm::normalize(command.light_mat * glm::vec4(world_normal, 0.f));
+
+                                auto light_dot = glm::dot(light_direction, light_normal);
+                                // if (light_dot < 0.f) light_dot = 0.f;
+                                light_dot = light_dot * 0.5f + 0.5f;
+
+                                auto light_intensity =  light_dot;
+                                // color *= ;
+
+
+                                frame_buffer->color_buffer_view->at(x + dx, y + dy) = to_r8g8b8a8_u(color * (1.f - shadow_value) * glm::vec4(light_intensity));
                             }
                         }
                     }
