@@ -136,6 +136,7 @@ int main() {
     auto box_mesh = Primitives::create_cube();
 
     ModelLoader::Scene scene;
+    // ModelLoader::load_scene(&scene, "./resource/San_Miguel/san-miguel-low-poly.obj");
     ModelLoader::load_scene(&scene, "./resource/sibenik/sibenik.obj");
 
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
@@ -264,8 +265,10 @@ int main() {
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
 
         for (auto& mesh : scene.meshes) {
+            // remove glasses
             bool is_transparant = glm::length2(mesh.material.transmittance) < 0.99f;
             if (is_transparant) continue;
+            
             draw(
                 &frame_buffer, 
                 {

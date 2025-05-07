@@ -28,7 +28,7 @@ project "Twist"
         "%VULKAN_SDK%/Lib/SDL2.lib"
     }
 
-    filter "configurations:Debug"
+    -- filter "configurations:Debug"
         symbols "On"
 
 	filter "configurations:Release"
