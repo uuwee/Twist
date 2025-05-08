@@ -1,5 +1,5 @@
 #pragma once
-
+ 
 namespace ImageIO{
 	void dump_surface_to_ppm(const SDL_Surface& surface){
     auto now = std::chrono::high_resolution_clock::now();
@@ -64,5 +64,21 @@ void dump_image_to_ppm(const Renderer::Image<std::uint32_t>& image, const std::s
         }
     }
     out_File.close();
+}
+
+template<typename PixelType>
+void dump_texture_to_ppm(const Renderer::Texture<PixelType>& texture, std::filesystem::path& directory_path){
+	if (!std::filesystem::is_directory(directory_path)){
+		std::cerr << "Failed to dump texture to ppm. directory:" << directory_path << " is not directory name.\n";
+	}
+
+	if (!std::filesystem::exists(directory_path)){
+		std::cerr << "Failed to dump texture to ppm. directory: " << directory_path << " does not exists.\n";
+	}
+
+	for (std::uint32_t miplevel = 0; miplevel < texture.mipmaps.size(); miplevel++){
+		const std::filesystem::path file_name = directory_path / ("mip_" + std::to_string(miplevel) + ".ppm");
+		dump_image_to_ppm(texture.mipmaps.at(miplevel), file_name);
+	}
 }
 }
