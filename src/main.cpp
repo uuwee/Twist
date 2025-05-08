@@ -163,6 +163,8 @@ void draw_light_probe(LightProbe* probe, Scene& scene, Image<std::uint32_t>& sha
                 viewport
             );
         }
+
+        Renderer::generate_mipmaps(&probe->radiance_map.at(i));
     }
 }
 
