@@ -494,7 +494,7 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
 
                                 auto light_space_pos = command.light_mat * world_position;
                                 light_space_pos /= light_space_pos.w;
-                                auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 1024), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 1024))) / UINT32_MAX;
+                                auto closest_distance = static_cast<float>(command.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 2048), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 2048))) / UINT32_MAX;
                                 // std::cout << closest_distance << "\n";
                                 auto current_distance = light_space_pos.z * 0.5f + 0.5f;
                                 float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;

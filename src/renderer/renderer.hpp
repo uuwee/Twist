@@ -141,8 +141,8 @@ std::uint32_t get_width(const FrameBuffer* fb);
 std::uint32_t get_height(const FrameBuffer* fb);
 
 template<typename PixelType>
-void clear(ImageView<PixelType>& image_view, PixelType color) {
-    std::fill_n(image_view.image, image_view.width * image_view.height, color);
+void clear(ImageView<PixelType>* image_view, const PixelType& color) {
+    std::fill_n(image_view->image, image_view->width * image_view->height, color);
 }
 
 float det(glm::vec2 const& a, glm::vec2 const& b);

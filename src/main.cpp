@@ -68,7 +68,7 @@ void init_light_probe(LightProbe* probe, glm::vec3 position) {
             }
         );    
         auto view = create_imageview(probe->radiance_map.at(i).mipmaps.back(), probe->resolution, probe->resolution);
-        clear(view, R8G8B8A8_U(0, 255, 0, 255));
+        clear(&view, R8G8B8A8_U(0, 255, 0, 255));
     }
 }
 
@@ -81,7 +81,7 @@ void dump_light_probe(const LightProbe& probe, const std::filesystem::path& outp
     }
 }
 
-void draw_light_probe(LightProbe* probe, const Scene* scene){
+void draw_light_probe(LightProbe* probe, const Scene* scene, ImageView<std::uint32_t>& shadow_map, glm::mat4& light_mat, glm::vec3& light_dir){
     const glm::vec3 position = probe->position;
 
     Renderer::Image<std::uint32_t> depth_buffer{
@@ -92,11 +92,39 @@ void draw_light_probe(LightProbe* probe, const Scene* scene){
     auto depth_buffer_view = create_imageview(depth_buffer, probe->resolution, probe->resolution);
 
     {
-        // render_target_view::FrameBuffer frame_buffer = {
-        //     .color_buffer_view = probe->
-        // }
+        clear(&depth_buffer_view, 0xFFFFFFFF);
+
+        auto rad_map_img_view = create_imageview(probe->radiance_map.at(0).mipmaps.at(0), probe->resolution, probe->resolution);
+
+        Renderer::FrameBuffer frame_buffer = {
+            .color_buffer_view = rad_map_img_view,
+            .depth_buffer_view = depth_buffer_view,
+        };
 
         const glm::mat4& vp_mat = get_cube_map_view_proj_matrix(CubeMapIndex::UP, position);
+
+        for (auto& mesh : scene.meshes) {
+            draw(
+                &frame_buffer, 
+                {
+                    .cull_mode = Renderer::CullMode::CLOCK_WISE,
+                    .depth_settings = {
+                        .write = true,
+                        .test_mode = Renderer::DepthTestMode::LESS,
+                    },
+                    .vertex_buffer = &mesh.vertices,
+                    .index_buffer = &mesh.indices,
+                    .material = &mesh.material,
+                    .material = mesh.material,
+                    .world_transform = glm::identity<glm::mat4>(),
+                    .vp_transform = vp_mat,
+                    .shadow_map = &shadow_map,
+                    .light_mat = &light_mat,
+                    .light_direction = light_direction,
+                },
+                viewport
+            );
+        }
     }
 }
 
@@ -130,7 +158,7 @@ int main() {
         .depth_buffer_view = depth_buffer_view,
     };
 
-    constexpr int shadow_map_width = 1024, shadow_map_height = 1024;
+    constexpr int shadow_map_width = 2048, shadow_map_height = 2048;
     Renderer::Image<std::uint32_t> shadow_map = {
         .image = std::vector<std::uint32_t>(shadow_map_width * shadow_map_height),
         .width = shadow_map_width,
@@ -170,7 +198,7 @@ int main() {
     // shadow pass
     glm::vec3 light_lookat = {0.f, 0.f, 0.f};
     glm::vec3 light_pos = {10.f, 50.f, -50.f};
-    clear(shadow_map_view, 0xFFFFFFFF);
+    clear(&shadow_map_view, 0xFFFFFFFF);
 
     Renderer::ViewPort shadow_viewport{
         .x = 0,
@@ -180,9 +208,6 @@ int main() {
     };
     auto shadow_proj = glm::ortho<float>(-50, 50, -50, 50, 0.1f, 100.f);
     auto shadow_view = glm::lookAt(light_pos, light_lookat, glm::vec3(1.f, 0.f, 0.f));
-    auto model_mat = glm::identity<glm::mat4>();
-        model_mat = glm::scale(model_mat, glm::vec3(1.f, 1.f, 1.f));
-        model_mat = glm::translate(model_mat, glm::vec3(0.f, 0.f, -2.f));
     for (auto& mesh: scene.meshes){
         bool is_transparant = glm::length2(mesh.material.transmittance) < 0.99f;
         if (is_transparant) continue;
@@ -262,8 +287,8 @@ int main() {
         SDL_SetWindowTitle(window, title.str().c_str());
         
         // clear color
-        clear(render_target_view, clear_color);  
-        clear(depth_buffer_view, 0xFFFFFFFF);
+        clear(&render_target_view, clear_color);  
+        clear(&depth_buffer_view, 0xFFFFFFFF);
 
         Renderer::ViewPort viewport = {
             .x = 0,
