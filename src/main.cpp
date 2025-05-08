@@ -107,10 +107,9 @@ void init_light_probe(LightProbe* probe, glm::vec3 position) {
 
 void dump_light_probe(const LightProbe& probe, const std::filesystem::path& output_dir){
     for (std::uint32_t i = static_cast<std::uint32_t>(CubeMapIndex::UP); i <= static_cast<std::uint32_t>(CubeMapIndex::BACK); i++){
-        const std::filesystem::path path = output_dir / "rad" / (std::to_string(i) + ".ppm") ;
-        const std::string path_str = path.generic_string();
-        Renderer::Image<Renderer::R8G8B8A8_U> img = probe.radiance_map.at(i).mipmaps.at(0);
-        ImageIO::dump_image_to_ppm(img, path_str);
+        const std::filesystem::path path = output_dir / "rad" / std::to_string(i);
+        const Renderer::Texture<Renderer::R8G8B8A8_U> tex = probe.radiance_map.at(i);
+        ImageIO::dump_texture_to_ppm( tex, path);
     }
 }
 

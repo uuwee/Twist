@@ -66,8 +66,8 @@ void dump_image_to_ppm(const Renderer::Image<std::uint32_t>& image, const std::s
     out_File.close();
 }
 
-template<typename PixelType>
-void dump_texture_to_ppm(const Renderer::Texture<PixelType>& texture, std::filesystem::path& directory_path){
+// template<typename Renderer::R8G8B8A8_U>
+void dump_texture_to_ppm(const Renderer::Texture<Renderer::R8G8B8A8_U>& texture, const std::filesystem::path& directory_path){
 	if (!std::filesystem::is_directory(directory_path)){
 		std::cerr << "Failed to dump texture to ppm. directory:" << directory_path << " is not directory name.\n";
 	}
@@ -78,7 +78,8 @@ void dump_texture_to_ppm(const Renderer::Texture<PixelType>& texture, std::files
 
 	for (std::uint32_t miplevel = 0; miplevel < texture.mipmaps.size(); miplevel++){
 		const std::filesystem::path file_name = directory_path / ("mip_" + std::to_string(miplevel) + ".ppm");
-		dump_image_to_ppm(texture.mipmaps.at(miplevel), file_name);
+		const Renderer::Image<Renderer::R8G8B8A8_U>& img = texture.mipmaps.at(miplevel);
+		dump_image_to_ppm(img, file_name.generic_string());
 	}
 }
 }
