@@ -56,7 +56,7 @@ static glm::mat4 get_cube_map_view_proj_matrix(const CubeMapIndex idx, const glm
         up = glm::vec3(0.f, 1.f, 0.f);
         break;
     case CubeMapIndex::RIGHT:
-        look_pos = position + glm::vec3(1.f, 1.f, 0.f);
+        look_pos = position + glm::vec3(1.f, 0.f, 0.f);
         up = glm::vec3(0.f, 1.f, 0.f);
         break;
     case CubeMapIndex::FRONT:
