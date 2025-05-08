@@ -61,12 +61,23 @@ void init_light_probe(LightProbe* probe, glm::vec3 position) {
         };
         probe->radiance_map.at(i).mipmaps.clear();
         probe->radiance_map.at(i).mipmaps.push_back(
-            Image<R8G8B8A8_U>{
+            Image<Renderer::R8G8B8A8_U>{
                 .image = std::vector<R8G8B8A8_U>(resolution * resolution),
                 .width = resolution,
                 .height = resolution,
             }
         );    
+        auto view = create_imageview(probe->radiance_map.at(i).mipmaps.back(), probe->resolution, probe->resolution);
+        clear(view, R8G8B8A8_U(0, 255, 0, 255));
+    }
+}
+
+void dump_light_probe(const LightProbe& probe, const std::filesystem::path& output_dir){
+    for (std::uint32_t i = static_cast<std::uint32_t>(CubeMapIndex::UP); i <= static_cast<std::uint32_t>(CubeMapIndex::BACK); i++){
+        const std::filesystem::path path = output_dir / "rad" / (std::to_string(i) + ".ppm") ;
+        const std::string path_str = path.generic_string();
+        Renderer::Image<Renderer::R8G8B8A8_U> img = probe.radiance_map.at(i).mipmaps.at(0);
+        ImageIO::dump_image_to_ppm(img, path_str);
     }
 }
 
@@ -141,6 +152,7 @@ int main() {
 
     LightProbe probe = {};
     init_light_probe(&probe, glm::vec3(10.f, 10.f, 10.f));
+    dump_light_probe(probe, "./bin/probes/");
 
     // timer
     auto last_frame_start = std::chrono::high_resolution_clock::now();

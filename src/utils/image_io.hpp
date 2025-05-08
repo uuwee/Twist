@@ -1,7 +1,7 @@
 #pragma once
 
 namespace ImageIO{
-	void dump_surface_to_ppm(SDL_Surface const& surface){
+	void dump_surface_to_ppm(const SDL_Surface& surface){
     auto now = std::chrono::high_resolution_clock::now();
     std::ofstream out_File("./bin/output.ppm");
     if (!out_File) {
@@ -32,10 +32,10 @@ namespace ImageIO{
     std::cout << "Saved image to output.ppm in " << duration << "ms" << std::endl;
 }
 
-void dump_image_to_ppm(Renderer::Image<Renderer::R8G8B8A8_U>& image, std::string const& filename){
+void dump_image_to_ppm(const Renderer::Image<Renderer::R8G8B8A8_U>& image, const std::string& filename){
     std::ofstream out_File(filename);
     if (!out_File) {
-        std::cerr << "Error creating output file." << std::endl;
+        std::cerr << "Error creating output file.: " << filename << "\n";
         return;
     }
 
@@ -49,7 +49,7 @@ void dump_image_to_ppm(Renderer::Image<Renderer::R8G8B8A8_U>& image, std::string
     out_File.close();
 }
 
-void dump_image_to_ppm(Renderer::Image<std::uint32_t>& image, std::string const& filename){
+void dump_image_to_ppm(const Renderer::Image<std::uint32_t>& image, const std::string& filename){
     std::ofstream out_File(filename);
     if (!out_File) {
         std::cerr << "Error creating output file." << std::endl;
@@ -65,5 +65,4 @@ void dump_image_to_ppm(Renderer::Image<std::uint32_t>& image, std::string const&
     }
     out_File.close();
 }
-
 }

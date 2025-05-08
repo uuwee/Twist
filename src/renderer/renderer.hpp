@@ -60,6 +60,9 @@ struct Image{
     PixelType& at(std::uint32_t x, std::uint32_t y) {
         return image[y * width + x];
     }
+    const PixelType& at(std::uint32_t x, std::uint32_t y) const{
+        return image[y * width + x];
+    }
 };
 
 template<typename PixelType>
@@ -67,6 +70,9 @@ struct ImageView{
     PixelType* image = nullptr;
     std::uint32_t width, height;
     PixelType& at(std::uint32_t x, std::uint32_t y) {
+        return image[y * width + x];
+    }
+    const PixelType& at(std::uint32_t x, std::uint32_t y) const{
         return image[y * width + x];
     }
 };
