@@ -28,16 +28,65 @@
 
 using namespace Renderer;
 
+enum class CubeMapIndex : std::uint32_t {
+    UP = 0,
+    DOWN = 1,
+    LEFT = 2,
+    RIGHT = 3,
+    FRONT = 4, 
+    BACK = 5,
+};
+
+static glm::mat4 get_cube_map_view_proj_matrix(const CubeMapIndex idx, const glm::vec3& position) {
+    return glm::identity<glm::mat4>();
+}
+
 struct LightProbe {
     glm::vec3 position;
-    std::array<Image<R8G8B8A8_U>, 6> irradiance_map;
+    std::uint32_t resolution = 1024;
+    std::array<Renderer::Image<R8G8B8A8_U>, 6> irradiance_map;
     std::array<Texture<R8G8B8A8_U>, 6> radiance_map;
 };
 
-void draw_light_probe(const Scene* scene, LightProbe* probe){
+void init_light_probe(LightProbe* probe, glm::vec3 position) {
+    probe->position = position;
+    const std::uint32_t resolution = probe->resolution;
+
+    for (std::uint32_t i = static_cast<std::uint32_t>(CubeMapIndex::UP); i <= static_cast<std::uint32_t>(CubeMapIndex::BACK); i++){
+        const CubeMapIndex idx = static_cast<CubeMapIndex>(i);
+        probe->irradiance_map.at(i) = Image<R8G8B8A8_U>{
+            .image = std::vector<R8G8B8A8_U>(resolution * resolution),
+            .width = resolution,
+            .height = resolution,
+        };
+        probe->radiance_map.at(i).mipmaps.clear();
+        probe->radiance_map.at(i).mipmaps.push_back(
+            Image<R8G8B8A8_U>{
+                .image = std::vector<R8G8B8A8_U>(resolution * resolution),
+                .width = resolution,
+                .height = resolution,
+            }
+        );    
+    }
+}
+
+void draw_light_probe(LightProbe* probe, const Scene* scene){
     const glm::vec3 position = probe->position;
 
-    
+    Renderer::Image<std::uint32_t> depth_buffer{
+        .image = std::vector<std::uint32_t>(probe->resolution * probe->resolution),
+        .width = probe->resolution,
+        .height = probe->resolution,
+    };
+    auto depth_buffer_view = create_imageview(depth_buffer, probe->resolution, probe->resolution);
+
+    {
+        // render_target_view::FrameBuffer frame_buffer = {
+        //     .color_buffer_view = probe->
+        // }
+
+        const glm::mat4& vp_mat = get_cube_map_view_proj_matrix(CubeMapIndex::UP, position);
+    }
 }
 
 int main() {
@@ -89,6 +138,9 @@ int main() {
     // ModelLoader::load_scene(&scene, "./resource/camera/camera.obj");
 
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
+
+    LightProbe probe = {};
+    init_light_probe(&probe, glm::vec3(10.f, 10.f, 10.f));
 
     // timer
     auto last_frame_start = std::chrono::high_resolution_clock::now();
