@@ -39,8 +39,37 @@ enum class CubeMapIndex : std::uint32_t {
 };
 
 static glm::mat4 get_cube_map_view_proj_matrix(const CubeMapIndex idx, const glm::vec3& position) {
-    const auto look_pos = position - glm::vec3(0.f, 1.f, 0.f);
-    const auto view = glm::lookAt(position, look_pos, glm::vec3(1.f, 0.f, 0.f));
+    glm::vec3 look_pos = position - glm::vec3(0.f, 1.f, 0.f);
+    glm::vec3 up = glm::vec3(1.f, 0.f, 0.f);
+
+    switch(idx) {
+    case CubeMapIndex::UP:
+        look_pos = position - glm::vec3(0.f, 1.f, 0.f);
+        up = glm::vec3(1.f, 0.f, 0.f);
+        break;
+    case CubeMapIndex::DOWN:
+        look_pos = position + glm::vec3(0.f, 1.f, 0.f);
+        up = glm::vec3(1.f, 0.f, 0.f);
+        break;
+    case CubeMapIndex::LEFT:
+        look_pos = position - glm::vec3(1.f, 0.f, 0.f);
+        up = glm::vec3(0.f, 1.f, 0.f);
+        break;
+    case CubeMapIndex::RIGHT:
+        look_pos = position + glm::vec3(1.f, 1.f, 0.f);
+        up = glm::vec3(0.f, 1.f, 0.f);
+        break;
+    case CubeMapIndex::FRONT:
+        look_pos = position - glm::vec3(0.f, 0.f, 1.f);
+        up = glm::vec3(1.f, 0.f, 0.f);
+        break;
+    case CubeMapIndex::BACK:
+        look_pos = position + glm::vec3(0.f, 0.f, 1.f);
+        up = glm::vec3(1.f, 0.f, 0.f);
+        break;
+    }
+
+    const auto view = glm::lookAt(position, look_pos, up);
     const auto proj = glm::perspective(glm::radians(90.0f), 1.f, 0.1f, 100.f);
     return proj * view;
 }
@@ -95,10 +124,10 @@ void draw_light_probe(LightProbe* probe, Scene& scene, Image<std::uint32_t>& sha
     };
     auto depth_buffer_view = create_imageview(depth_buffer, probe->resolution, probe->resolution);
 
-    {
+    for (std::uint32_t i = static_cast<std::uint32_t>(CubeMapIndex::UP); i <= static_cast<std::uint32_t>(CubeMapIndex::BACK); i++) {
         clear(&depth_buffer_view, 0xFFFFFFFF);
 
-        auto rad_map_img_view = create_imageview(probe->radiance_map.at(0).mipmaps.at(0), probe->resolution, probe->resolution);
+        auto rad_map_img_view = create_imageview(probe->radiance_map.at(i).mipmaps.at(0), probe->resolution, probe->resolution);
         clear(&rad_map_img_view, R8G8B8A8_U(255, 0, 0, 255));
 
         Renderer::FrameBuffer frame_buffer = {
@@ -106,7 +135,7 @@ void draw_light_probe(LightProbe* probe, Scene& scene, Image<std::uint32_t>& sha
             .depth_buffer_view = depth_buffer_view,
         };
 
-        const glm::mat4 vp_mat = get_cube_map_view_proj_matrix(CubeMapIndex::UP, position);
+        const glm::mat4 vp_mat = get_cube_map_view_proj_matrix(static_cast<CubeMapIndex>(i), position);
         std::cout << "probe pos: " << glm::to_string(probe->position) << "\n";
         const Renderer::ViewPort viewport {
             .x = 0, .y = 0, .width = probe->resolution, .height = probe->resolution,
