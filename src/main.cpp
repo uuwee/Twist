@@ -3,6 +3,7 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtx/norm.hpp"
+#include <glm/gtx/string_cast.hpp>
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include "stb_image/stb_image.h"
@@ -38,7 +39,10 @@ enum class CubeMapIndex : std::uint32_t {
 };
 
 static glm::mat4 get_cube_map_view_proj_matrix(const CubeMapIndex idx, const glm::vec3& position) {
-    return glm::identity<glm::mat4>();
+    const auto look_pos = position - glm::vec3(0.f, 1.f, 0.f);
+    const auto view = glm::lookAt(position, look_pos, glm::vec3(1.f, 0.f, 0.f));
+    const auto proj = glm::perspective(glm::radians(90.0f), 1.f, 0.1f, 100.f);
+    return proj * view;
 }
 
 struct LightProbe {
@@ -81,7 +85,7 @@ void dump_light_probe(const LightProbe& probe, const std::filesystem::path& outp
     }
 }
 
-void draw_light_probe(LightProbe* probe, const Scene* scene, ImageView<std::uint32_t>& shadow_map, glm::mat4& light_mat, glm::vec3& light_dir){
+void draw_light_probe(LightProbe* probe, Scene& scene, Image<std::uint32_t>& shadow_map, const glm::mat4& light_mat, const glm::vec3& light_dir){
     const glm::vec3 position = probe->position;
 
     Renderer::Image<std::uint32_t> depth_buffer{
@@ -95,33 +99,38 @@ void draw_light_probe(LightProbe* probe, const Scene* scene, ImageView<std::uint
         clear(&depth_buffer_view, 0xFFFFFFFF);
 
         auto rad_map_img_view = create_imageview(probe->radiance_map.at(0).mipmaps.at(0), probe->resolution, probe->resolution);
+        clear(&rad_map_img_view, R8G8B8A8_U(255, 0, 0, 255));
 
         Renderer::FrameBuffer frame_buffer = {
             .color_buffer_view = rad_map_img_view,
             .depth_buffer_view = depth_buffer_view,
         };
 
-        const glm::mat4& vp_mat = get_cube_map_view_proj_matrix(CubeMapIndex::UP, position);
+        const glm::mat4 vp_mat = get_cube_map_view_proj_matrix(CubeMapIndex::UP, position);
+        std::cout << "probe pos: " << glm::to_string(probe->position) << "\n";
+        const Renderer::ViewPort viewport {
+            .x = 0, .y = 0, .width = probe->resolution, .height = probe->resolution,
+        };
 
         for (auto& mesh : scene.meshes) {
-            draw(
-                &frame_buffer, 
-                {
-                    .cull_mode = Renderer::CullMode::CLOCK_WISE,
-                    .depth_settings = {
-                        .write = true,
-                        .test_mode = Renderer::DepthTestMode::LESS,
-                    },
-                    .vertex_buffer = &mesh.vertices,
-                    .index_buffer = &mesh.indices,
-                    .material = &mesh.material,
-                    .material = mesh.material,
-                    .world_transform = glm::identity<glm::mat4>(),
-                    .vp_transform = vp_mat,
-                    .shadow_map = &shadow_map,
-                    .light_mat = &light_mat,
-                    .light_direction = light_direction,
+            Renderer::DrawCall call {
+                .cull_mode = Renderer::CullMode::CLOCK_WISE,
+                .depth_settings = {
+                    .write = true,
+                    .test_mode = Renderer::DepthTestMode::LESS,
                 },
+                .vertex_buffer = &mesh.vertices,
+                .index_buffer = &mesh.indices,
+                .material = &mesh.material,
+                .world_transform = glm::identity<glm::mat4>(),
+                .vp_transform = vp_mat,
+                .shadow_map = &shadow_map,
+                .light_mat = light_mat,
+                .light_direction = light_dir,
+            };
+            Renderer::draw(
+                &frame_buffer, 
+                call,
                 viewport
             );
         }
@@ -179,8 +188,8 @@ int main() {
     Renderer::R8G8B8A8_U clear_color = {255, 200, 200, 255};
 
     LightProbe probe = {};
-    init_light_probe(&probe, glm::vec3(10.f, 10.f, 10.f));
-    dump_light_probe(probe, "./bin/probes/");
+    init_light_probe(&probe, glm::vec3(0.f, 0.1f, 0.f));
+    
 
     // timer
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -222,12 +231,18 @@ int main() {
                 .vertex_buffer = &mesh.vertices,
                 .index_buffer = &mesh.indices,
                 .material = nullptr,
-                .world_transform = model_mat,
+                .world_transform = glm::identity<glm::mat4>(),
                 .vp_transform = shadow_proj * shadow_view,
             },
             shadow_viewport
         );
     }
+
+    // light probe pass
+    const glm::mat4 light_mat = shadow_proj * shadow_view;
+    const glm::vec3 light_dir = glm::normalize(light_lookat - light_pos);
+    draw_light_probe(&probe, scene, shadow_map, light_mat, light_dir);
+    dump_light_probe(probe, "./bin/probes/");
 
     while(running) {
         for (SDL_Event event; SDL_PollEvent(&event); ) switch (event.type)
@@ -318,7 +333,7 @@ int main() {
                     .vertex_buffer = &mesh.vertices,
                     .index_buffer = &mesh.indices,
                     .material = &mesh.material,
-                    .world_transform = model_mat,
+                    .world_transform = glm::identity<glm::mat4>(),
                     .vp_transform = proj_mat * view_mat,
                     .shadow_map = &shadow_map,
                     .light_mat = shadow_proj * shadow_view,
