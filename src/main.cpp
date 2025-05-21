@@ -344,6 +344,7 @@ int main() {
 
         y_rotation += delta_time;
         auto view_mat = glm::identity<glm::mat4>();
+        view_mat = glm::rotate(view_mat, y_rotation, glm::vec3(0.f, -1.f, 0.f));
         view_mat = glm::translate(view_mat, camera_pos);
         auto proj_mat = glm::perspective(glm::radians(90.0f), static_cast<float>(width) / height, 0.1f, 100.f);
 

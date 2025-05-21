@@ -398,11 +398,35 @@ VertOut Renderer::vertex_shader(const VertIn& in, const Uniform& uniform){
 	};
 }
 
-FragOut Renderer::fragment_shader(const FragIn& in, const Uniform& uniform) {
-	return FragOut {
+FragOut Renderer::fragment_shader(const FragIn& in, const Uniform& uniform, const std::function<glm::vec4(Texture<R8G8B8A8_U>*)> samplet_tex0) {
+	FragOut out{
 		.color = glm::vec4(1.f, 1.f, 1.f, 1.f),
         .depth = 0,
 	};
+
+    auto light_space_pos = uniform.light_mat * in.world_pos;
+    light_space_pos /= light_space_pos.w;
+    auto closest_distance = static_cast<float>(uniform.shadow_map->at(static_cast<std::uint32_t>((light_space_pos.x * 0.5f + 0.5f) * 2048), static_cast<std::uint32_t>((-light_space_pos.y * 0.5f + 0.5f) * 2048))) / UINT32_MAX;
+    auto current_distance = light_space_pos.z * 0.5f + 0.5f;
+    float shadow_value = current_distance - 0.005f > closest_distance ? 1.f : 0.f;
+
+    auto light_direction = glm::normalize(glm::vec4(0.f, 0.f, -1.f, 0.f));
+    auto light_normal = glm::normalize(uniform.light_mat * glm::vec4(in.world_norm, 0.f));
+
+    auto light_dot = glm::dot(light_direction, light_normal);
+    if (light_dot < 0.f) light_dot = 0.f;
+    // light_dot = light_dot * 0.5f + 0.5f;
+
+    auto light_intensity =  light_dot;
+
+    glm::vec4 albedo = glm::vec4(uniform.material->diffuse, 1.f);
+    if (uniform.material->diffuse_tex)
+        albedo = samplet_tex0(uniform.material->diffuse_tex);
+    
+    auto light_diffuse = glm::vec4(1.f) * (1.f - shadow_value) * albedo / 3.14f * light_intensity;
+    out.color = light_diffuse;
+
+    return out;
 }
 
 void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport) {
@@ -721,6 +745,15 @@ glm::vec4 sample_texture_at(Image<R8G8B8A8_U>* mipmap, glm::vec2 texcoord) {
 }
 
 void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport, FragIn v0, FragIn v1, FragIn v2){
+    Uniform uniform = {
+        .model_mat = command.world_transform,
+        .proj_view_mat = command.vp_transform,
+        .light_mat = command.light_mat,
+        .light_dir = command.light_direction,
+        .material = command.material,
+        .shadow_map = command.shadow_map,
+    };
+
     v0.ndc_pos = apply(viewport, perspective_divide(v0.ndc_pos));
     v1.ndc_pos = apply(viewport, perspective_divide(v1.ndc_pos));
     v2.ndc_pos = apply(viewport, perspective_divide(v2.ndc_pos));
@@ -797,6 +830,7 @@ void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const Vie
             vertices[dy][dx] = FragIn{
                 .model_pos = l0[dy][dx] * v0.model_pos + l1[dy][dx] * v1.model_pos + l2[dy][dx] * v2.model_pos,
                 .world_pos = l0[dy][dx] * v0.world_pos + l1[dy][dx] * v1.world_pos + l2[dy][dx] * v2.world_pos,
+                .world_norm = glm::cross( v2.world_pos.xyz - v0.world_pos.xyz, v1.world_pos.xyz - v0.world_pos.xyz),
                 .ndc_pos = l0[dy][dx] * v0.ndc_pos + l1[dy][dx] * v1.ndc_pos + l2[dy][dx] * v2.ndc_pos,
                 .texcoord = l0[dy][dx] * v0.texcoord + l1[dy][dx] * v1.texcoord + l2[dy][dx] * v2.texcoord,
             };
@@ -819,6 +853,7 @@ void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const Vie
 
             if (frame_buffer->color_buffer_view.has_value()) {
                 auto sample_texcoord0 = [&vertices, dx, dy](Texture<R8G8B8A8_U>* tex) {
+                    if (!tex) return glm::vec4(0.f);
                     glm::vec2 texture_scale(tex->mipmaps[0].width, tex->mipmaps[0].height);
                     glm::vec2 tc = texture_scale * vertices[dy][dx].texcoord;
                     glm::vec2 tc_dx = texture_scale * (vertices[dy][1].texcoord - vertices[dy][0].texcoord);
@@ -833,10 +868,10 @@ void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const Vie
                     return sample_texture_at(mipmap, tc);
                 };
 
-                auto albedo_tex = command.material->diffuse_tex;
-                if (!albedo_tex) continue;
-                glm::vec4 albedo = sample_texcoord0(albedo_tex);
-                frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(albedo);
+                glm::vec4 color = fragment_shader(vertices[dy][dx], uniform, sample_texcoord0).color;
+
+                // glm::vec4 albedo = sample_texcoord0(command.material->diffuse_tex);
+                frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(color);
             }
 
             // frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(glm::vec4(vertices.world_pos.xyz, 1.f));

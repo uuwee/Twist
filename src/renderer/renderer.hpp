@@ -151,19 +151,24 @@ using Plane = glm::vec4;
 using Frustum = std::array<Plane, 6>;
 
 struct Uniform{
-	glm::mat4 model_mat;
-	glm::mat4 proj_view_mat;
+	const glm::mat4 model_mat;
+	const glm::mat4 proj_view_mat;
+    const glm::mat4 light_mat;
+    const glm::vec3 light_dir;
 	const Material* material;
+    const Image<std::uint32_t>* shadow_map;
 };
 
 struct VertIn {
 	glm::vec4 model_pos;
+    glm::vec3 world_norm;
 	glm::vec2 texcoord;
 };
 
 struct VertOut {
 	glm::vec4 model_pos;
 	glm::vec4 world_pos;
+    glm::vec3 world_norm;
 	glm::vec4 ndc_pos;
 	glm::vec2 texcoord;
 };
@@ -176,7 +181,7 @@ struct FragOut {
 };
 
 VertOut vertex_shader(const VertIn& in, const Uniform& uniform);
-FragOut fragment_shader(const FragIn& in, const Uniform& uniform);
+FragOut fragment_shader(const FragIn& in, const Uniform& uniform, const std::function<glm::vec4(Texture<R8G8B8A8_U>*)>);
 
 void draw(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport);
 
