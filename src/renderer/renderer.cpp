@@ -565,7 +565,6 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                 if (command.material->diffuse_tex != nullptr){
                                     auto albedo_tex = command.material->diffuse_tex;
                                     glm::vec2 texture_scale(albedo_tex->mipmaps[0].width, albedo_tex->mipmaps[0].height);
-                                    glm::vec2 tc = texture_scale * tex_coord[dy][dx];
                                     glm::vec2 tc_dx = texture_scale * (tex_coord[dy][1] - tex_coord[dy][0]);
                                     glm::vec2 tc_dy = texture_scale * (tex_coord[1][dx] - tex_coord[0][dx]);
                                     
@@ -583,6 +582,7 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
                                         mipmap = &albedo_tex->mipmaps[std::min<int>(mipmap_level, static_cast<int>(albedo_tex->mipmaps.size()) - 1)];
                                     }
                                     
+                                    glm::vec2 tc = texture_scale * tex_coord[dy][dx];
                                     tc.x = mipmap->width * std::fmod(tex_coord[dy][dx].x, 1.f);
                                     tc.y = mipmap->height * std::fmod(tex_coord[dy][dx].y, 1.f);
                                     
@@ -680,6 +680,46 @@ void culc_bary_centric(
     }
 }
 
+
+
+Image<R8G8B8A8_U>* select_mipmap(Texture<R8G8B8A8_U>* texture, float texel_area){
+    bool magnification = texel_area >= 1.f;
+
+    int mipmap_level = magnification ? 0 : static_cast<int>(std::ceil(-std::log2(std::min(1.f, texel_area)) / 2.f));
+    return &texture->mipmaps[std::min<int>(mipmap_level, static_cast<int>(texture->mipmaps.size()) - 1)];
+}
+
+glm::vec4 sample_texture_at(Image<R8G8B8A8_U>* mipmap, glm::vec2 texcoord) {
+    if (mipmap->width == 1 || mipmap->height == 1){
+        int ix = static_cast<int>(std::floor(texcoord.x));
+        int iy = static_cast<int>(std::floor(texcoord.y));
+
+        ix = std::max(ix, 0);
+        iy = std::max(iy, 0);
+        auto texel = mipmap->at(ix, iy);
+        return to_vec4(texel);
+    }
+    else{
+        glm::vec2 tc = texcoord - glm::vec2(0.5f);
+        tc.x = std::max(0.f, std::min(mipmap->width - 1.f, tc.x));
+        tc.y = std::max(0.f, std::min(mipmap->height - 1.f, tc.y));
+        int ix = std::min<int>(mipmap->width - 2, static_cast<int>(std::floor(tc.x)));
+        int iy = std::min<int>(mipmap->height - 2, static_cast<int>(std::floor(tc.y)));
+
+        std::array<glm::vec4, 4> samples = {
+            to_vec4(mipmap->at(ix, iy)),
+            to_vec4(mipmap->at(ix + 1, iy)),
+            to_vec4(mipmap->at(ix, iy + 1)),
+            to_vec4(mipmap->at(ix + 1, iy + 1))
+        };
+
+        tc -= glm::vec2(ix, iy);
+        
+        return (1.f - tc.y) * ((1.f - tc.x) * samples[0] + tc.x * samples[1]) + tc.y * ((1.f - tc.x) * samples[2] + tc.x * samples[3]);
+        // return glm::vec4(texcoord / glm::vec2(mipmap->width, mipmap->height), 0.f, 1.f);
+    }
+}
+
 void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport, FragIn v0, FragIn v1, FragIn v2){
     v0.ndc_pos = apply(viewport, perspective_divide(v0.ndc_pos));
     v1.ndc_pos = apply(viewport, perspective_divide(v1.ndc_pos));
@@ -736,27 +776,73 @@ void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const Vie
             std::ceil(v1.ndc_pos.y), 
             std::ceil(v2.ndc_pos.y)})));
 
-    for (std::int32_t y = ymin; y < ymax; y+= 2){
-        for (std::int32_t x = xmin; x < xmax; x+= 2){
+    for (std::int32_t y = ymin; y < ymax; y+= 2)
+    for (std::int32_t x = xmin; x < xmax; x+= 2){
+        array2x2 det01p;
+        array2x2 det12p;
+        array2x2 det20p;
 
-            
-            array2x2 det01p;
-            array2x2 det12p;
-            array2x2 det20p;
+        array2x2 l0;
+        array2x2 l1;
+        array2x2 l2;
 
-            array2x2 l0;
-            array2x2 l1;
-            array2x2 l2;
+        culc_bary_centric(&det01p, &det12p, &det20p, &l0, &l1, &l2, v0.ndc_pos, v1.ndc_pos, v2.ndc_pos, x, y, det012);
 
-            culc_bary_centric(&det01p, &det12p, &det20p, &l0, &l1, &l2, v0.ndc_pos, v1.ndc_pos, v2.ndc_pos, x, y, det012);
+        std::array<std::array<FragIn, 2>, 2> vertices{};
+        for (int dy = 0; dy < 2; dy++)
+        for (int dx = 0; dx < 2; dx++){
+            if (x + dx > xmax || y + dy > ymax) continue;
+            if (det01p[dy][dx] < 0.f || det12p[dy][dx] < 0.f || det20p[dy][dx] < 0.f) continue;
 
-            for (int dy = 0; dy < 2; dy++){
-                for (int dx = 0; dx < 2; dx++){
-                    frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(glm::vec4(l0[dy][dx], l1[dy][dx], l2[dy][dx], 1.f));
-                }
+            vertices[dy][dx] = FragIn{
+                .model_pos = l0[dy][dx] * v0.model_pos + l1[dy][dx] * v1.model_pos + l2[dy][dx] * v2.model_pos,
+                .world_pos = l0[dy][dx] * v0.world_pos + l1[dy][dx] * v1.world_pos + l2[dy][dx] * v2.world_pos,
+                .ndc_pos = l0[dy][dx] * v0.ndc_pos + l1[dy][dx] * v1.ndc_pos + l2[dy][dx] * v2.ndc_pos,
+                .texcoord = l0[dy][dx] * v0.texcoord + l1[dy][dx] * v1.texcoord + l2[dy][dx] * v2.texcoord,
+            };
+        }
+
+        for (int dy = 0; dy < 2; dy++)
+        for (int dx = 0; dx < 2; dx++){
+            if (x + dx > xmax || y + dy > ymax) continue;
+            if (det01p[dy][dx] < 0.f || det12p[dy][dx] < 0.f || det20p[dy][dx] < 0.f) continue;
+
+            if (frame_buffer->depth_buffer_view.has_value()) {
+                std::uint32_t depth = static_cast<uint32_t>((0.5f + 0.5f * vertices[dy][dx].ndc_pos.z) * UINT32_MAX);
+
+                if (!depth_test_passed(command.depth_settings.test_mode, depth, frame_buffer->depth_buffer_view->at(x + dx, y + dy)))
+                    continue;
+
+                if (command.depth_settings.write)
+                    frame_buffer->depth_buffer_view->at(x + dx, y + dy) = depth;
             }
+
+            if (frame_buffer->color_buffer_view.has_value()) {
+                auto sample_texcoord0 = [&vertices, dx, dy](Texture<R8G8B8A8_U>* tex) {
+                    glm::vec2 texture_scale(tex->mipmaps[0].width, tex->mipmaps[0].height);
+                    glm::vec2 tc = texture_scale * vertices[dy][dx].texcoord;
+                    glm::vec2 tc_dx = texture_scale * (vertices[dy][1].texcoord - vertices[dy][0].texcoord);
+                    glm::vec2 tc_dy = texture_scale * (vertices[1][dx].texcoord - vertices[0][dx].texcoord);
+                    float texel_area = 1.f / std::abs(det(tc_dx, tc_dy));
+                    auto mipmap = select_mipmap(tex, texel_area);
+                    auto mip_level = mipmap - tex->mipmaps.data();
+                    tc.x = static_cast<float>(fmod(tc.x, mipmap->width)); 
+                    if (tc.x < 0.f) tc.x += mipmap->width;
+                    tc.y = static_cast<float>(fmod(tc.y, mipmap->height));
+                    if (tc.y < 0.f) tc.y += mipmap->height;    
+                    return sample_texture_at(mipmap, tc);
+                };
+
+                auto albedo_tex = command.material->diffuse_tex;
+                if (!albedo_tex) continue;
+                glm::vec4 albedo = sample_texcoord0(albedo_tex);
+                frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(albedo);
+            }
+
+            // frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(glm::vec4(vertices.world_pos.xyz, 1.f));
         }
     }
+    
 }
 
 void Renderer::draw_new(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport){
