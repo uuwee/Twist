@@ -352,7 +352,7 @@ int main() {
             bool is_transparant = glm::length2(mesh.material.transmittance) < 0.99f;
             if (is_transparant) continue;
 
-            draw(
+            draw_new(
                 &frame_buffer, 
                 {
                     .cull_mode = Renderer::CullMode::CLOCK_WISE,

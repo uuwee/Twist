@@ -153,7 +153,7 @@ using Frustum = std::array<Plane, 6>;
 struct Uniform{
 	glm::mat4 model_mat;
 	glm::mat4 proj_view_mat;
-	const Material& material;
+	const Material* material;
 };
 
 struct VertIn {
@@ -179,6 +179,8 @@ VertOut vertex_shader(const VertIn& in, const Uniform& uniform);
 FragOut fragment_shader(const FragIn& in, const Uniform& uniform);
 
 void draw(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport);
+
+void draw_new(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport);
 
 std::uint32_t bits_reverse( std::uint32_t v );
 

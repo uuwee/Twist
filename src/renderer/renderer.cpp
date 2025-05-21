@@ -75,6 +75,25 @@ Vertex clip_intersect_edge(Vertex const & v0, Vertex const & v1, float value0, f
     return v;
 }
 
+VertOut clip_intersect_edge(VertOut const & v0, VertOut const & v1, float value0, float value1)
+{
+    // f(t) = at+b
+    // f(0) = v0 = b
+    // f(1) = v1 = a+v0 => a = v1 - v0
+    // f(t) = v0 + (v1 - v0) * t
+    // f(t) = 0 => t = -v0 / (v1 - v0) = v0 / (v0 - v1)
+
+    float t = value0 / (value0 - value1);
+
+    VertOut v;
+    v.ndc_pos = (1.f - t) * v0.ndc_pos + t * v1.ndc_pos;
+    // v.normal = (1.f - t) * v0.normal + t * v1.normal;
+    v.texcoord = (1.f - t) * v0.texcoord + t * v1.texcoord;
+    v.world_pos = (1.f - t) * v0.world_pos + t * v1.world_pos;
+
+    return v;
+}
+
 Vertex* clip_triangle(Vertex * triangle, glm::vec4 equation, Vertex * result)
 {
     float values[3] =
@@ -82,6 +101,101 @@ Vertex* clip_triangle(Vertex * triangle, glm::vec4 equation, Vertex * result)
         glm::dot(triangle[0].ndc_position, equation),
         glm::dot(triangle[1].ndc_position, equation),
         glm::dot(triangle[2].ndc_position, equation),
+    };
+
+    std::uint8_t mask = (values[0] < 0.f ? 1 : 0) | (values[1] < 0.f ? 2 : 0) | (values[2] < 0.f ? 4 : 0);
+
+    switch (mask)
+    {
+    case 0b000:
+        // All vertices are inside allowed half-space
+        // No clipping required, copy the triangle to output
+        *result++ = triangle[0];
+        *result++ = triangle[1];
+        *result++ = triangle[2];
+        break;
+    case 0b001:
+        // Vertex 0 is outside allowed half-space
+        // Replace it with points on edges 01 and 02
+        // And re-triangulate
+        {
+            auto v01 = clip_intersect_edge(triangle[0], triangle[1], values[0], values[1]);
+            auto v02 = clip_intersect_edge(triangle[0], triangle[2], values[0], values[2]);
+            *result++ = v01;
+            *result++ = triangle[1];
+            *result++ = triangle[2];
+            *result++ = v01;
+            *result++ = triangle[2];
+            *result++ = v02;
+        }
+        break;
+    case 0b010:
+        // Vertex 1 is outside allowed half-space
+        // Replace it with points on edges 10 and 12
+        // And re-triangulate
+        {
+            auto v10 = clip_intersect_edge(triangle[1], triangle[0], values[1], values[0]);
+            auto v12 = clip_intersect_edge(triangle[1], triangle[2], values[1], values[2]);
+            *result++ = triangle[0];
+            *result++ = v10;
+            *result++ = triangle[2];
+            *result++ = triangle[2];
+            *result++ = v10;
+            *result++ = v12;
+        }
+        break;
+    case 0b011:
+        // Vertices 0 and 1 are outside allowed half-space
+        // Replace them with points on edges 02 and 12
+        *result++ = clip_intersect_edge(triangle[0], triangle[2], values[0], values[2]);
+        *result++ = clip_intersect_edge(triangle[1], triangle[2], values[1], values[2]);
+        *result++ = triangle[2];
+        break;
+    case 0b100:
+        // Vertex 2 is outside allowed half-space
+        // Replace it with points on edges 20 and 21
+        // And re-triangulate
+        {
+            auto v20 = clip_intersect_edge(triangle[2], triangle[0], values[2], values[0]);
+            auto v21 = clip_intersect_edge(triangle[2], triangle[1], values[2], values[1]);
+            *result++ = triangle[0];
+            *result++ = triangle[1];
+            *result++ = v20;
+            *result++ = v20;
+            *result++ = triangle[1];
+            *result++ = v21;
+        }
+        break;
+    case 0b101:
+        // Vertices 0 and 2 are outside allowed half-space
+        // Replace them with points on edges 01 and 21
+        *result++ = clip_intersect_edge(triangle[0], triangle[1], values[0], values[1]);
+        *result++ = triangle[1];
+        *result++ = clip_intersect_edge(triangle[2], triangle[1], values[2], values[1]);
+        break;
+    case 0b110:
+        // Vertices 1 and 2 are outside allowed half-space
+        // Replace them with points on edges 10 and 20
+        *result++ = triangle[0];
+        *result++ = clip_intersect_edge(triangle[1], triangle[0], values[1], values[0]);
+        *result++ = clip_intersect_edge(triangle[2], triangle[0], values[2], values[0]);
+        break;
+    case 0b111:
+        // All vertices are outside allowed half-space
+        // Clip the whole triangle, result is empty
+        break;
+    }
+
+    return result;
+}
+
+VertOut* clip_triangle(VertOut * triangle, glm::vec4 equation, VertOut* result)
+{
+    float values[3] =
+    {
+        glm::dot(triangle[0].ndc_pos, equation),
+        glm::dot(triangle[1].ndc_pos, equation),
+        glm::dot(triangle[2].ndc_pos, equation),
     };
 
     std::uint8_t mask = (values[0] < 0.f ? 1 : 0) | (values[1] < 0.f ? 2 : 0) | (values[2] < 0.f ? 4 : 0);
@@ -193,6 +307,22 @@ Renderer::Vertex* clip_triangle(Renderer::Vertex* begin, Renderer::Vertex* end)
     return end;
 }
 
+Renderer::VertOut* clip_triangle(Renderer::VertOut* begin, Renderer::VertOut* end){
+    static glm::vec4 const equations[2] = {
+        {0.f, 0.f, 1.f, 1.f}, // Z > -W => Z + W > 0
+        {0.f, 0.f, -1.f, 1.f}, // Z < W => -Z + W > 0
+    };
+
+    VertOut result[12];
+
+    for (auto equation : equations){
+        auto result_end = result;
+        for (VertOut* triangle = begin; triangle != end; triangle += 3)
+            result_end = clip_triangle(triangle, equation, result_end);
+        end = std::copy(result, result_end, begin);
+    }
+    return end;
+}
 
 inline glm::vec4 perspective_divide(glm::vec4 const& v) {
     auto w = 1.f / v.w;
@@ -519,6 +649,145 @@ void Renderer::draw(FrameBuffer* frame_buffer, const DrawCall& command, const Vi
 
                 }
             }
+        }
+    }
+}
+
+using array2x2 = std::array<std::array<float, 2>, 2>;
+void culc_bary_centric(
+    array2x2* det01p, array2x2* det12p, array2x2* det20p, 
+    array2x2* l0, array2x2* l1, array2x2* l2, 
+    const glm::vec4& v0ndc, const glm::vec4& v1ndc, const glm::vec4& v2ndc,
+    const std::uint32_t x, const std::uint32_t y, const float det012){
+    for (int dy = 0; dy < 2; dy++){
+        for (int dx = 0; dx < 2; dx++){
+            glm::vec4 p = glm::vec4( x+dx+0.5f, y+dy+0.5f, 0.f, 0.f);
+
+            det01p->at(dy).at(dx) = det(v1ndc - v0ndc, p - v0ndc);
+            det12p->at(dy).at(dx) = det(v2ndc - v1ndc, p - v1ndc);
+            det20p->at(dy).at(dx) = det(v0ndc - v2ndc, p - v2ndc);
+
+            l0->at(dy).at(dx) = det12p->at(dy).at(dx) / det012 * v0ndc.w;
+            l1->at(dy).at(dx) = det20p->at(dy).at(dx) / det012 * v1ndc.w;
+            l2->at(dy).at(dx) = det01p->at(dy).at(dx) / det012 * v2ndc.w;
+
+            float lsum = l0->at(dy).at(dx) + l1->at(dy).at(dx) + l2->at(dy).at(dx);
+
+            l0->at(dy).at(dx) /= lsum;
+            l1->at(dy).at(dx) /= lsum;
+            l2->at(dy).at(dx) /= lsum;
+        }
+    }
+}
+
+void draw_triangle(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport, FragIn v0, FragIn v1, FragIn v2){
+    v0.ndc_pos = apply(viewport, perspective_divide(v0.ndc_pos));
+    v1.ndc_pos = apply(viewport, perspective_divide(v1.ndc_pos));
+    v2.ndc_pos = apply(viewport, perspective_divide(v2.ndc_pos));
+
+    float det012 = det(v1.ndc_pos.xy - v0.ndc_pos.xy, v2.ndc_pos.xy - v0.ndc_pos.xy);
+
+    const bool is_ccw = det012 < 0.f;
+    switch(command.cull_mode){
+    case CullMode::NONE:
+        if(is_ccw){
+            std::swap(v1, v2);
+            det012 = -det012;
+        }
+        break;
+    case CullMode::CLOCK_WISE:
+        if (!is_ccw) return;
+        std::swap(v1, v2);
+        det012 = -det012;
+        break;
+    case CullMode::COUNTER_CLOCK_WISE:
+        if (is_ccw) return;
+        break;
+    default: break;
+    }
+
+    std::int32_t xmin = std::max<std::int32_t>(viewport.x, 0);
+    std::int32_t xmax = std::min<std::int32_t>(viewport.x + viewport.width, get_width(frame_buffer))-1;
+    std::int32_t ymin = std::max<std::int32_t>(viewport.y, 0);
+    std::int32_t ymax = std::min<std::int32_t>(viewport.y + viewport.height, get_height(frame_buffer))-1;
+
+    xmin = static_cast<int32_t>(std::max<float>(
+        static_cast<float>(xmin), 
+        std::min(
+            {std::floor(v0.ndc_pos.x), 
+            std::floor(v1.ndc_pos.x), 
+            std::floor(v2.ndc_pos.x)})));  
+    xmax = static_cast<int32_t>(std::min<float>(
+        static_cast<float>(xmax), 
+        std::max(
+            { std::ceil(v0.ndc_pos.x), 
+            std::ceil(v1.ndc_pos.x), 
+            std::ceil(v2.ndc_pos.x)})));
+    ymin = static_cast<int32_t>(std::max<float>(
+        static_cast<float>(ymin), 
+        std::min(
+            { std::floor(v0.ndc_pos.y), 
+            std::floor(v1.ndc_pos.y), 
+            std::floor(v2.ndc_pos.y)})));
+    ymax = static_cast<int32_t>(std::min<float>(
+        static_cast<float>(ymax), 
+        std::max(
+            { std::ceil(v0.ndc_pos.y), 
+            std::ceil(v1.ndc_pos.y), 
+            std::ceil(v2.ndc_pos.y)})));
+
+    for (std::int32_t y = ymin; y < ymax; y+= 2){
+        for (std::int32_t x = xmin; x < xmax; x+= 2){
+
+            
+            array2x2 det01p;
+            array2x2 det12p;
+            array2x2 det20p;
+
+            array2x2 l0;
+            array2x2 l1;
+            array2x2 l2;
+
+            culc_bary_centric(&det01p, &det12p, &det20p, &l0, &l1, &l2, v0.ndc_pos, v1.ndc_pos, v2.ndc_pos, x, y, det012);
+
+            for (int dy = 0; dy < 2; dy++){
+                for (int dx = 0; dx < 2; dx++){
+                    frame_buffer->color_buffer_view->at(x+dx, y+dy) = to_r8g8b8a8_u(glm::vec4(l0[dy][dx], l1[dy][dx], l2[dy][dx], 1.f));
+                }
+            }
+        }
+    }
+}
+
+void Renderer::draw_new(FrameBuffer* frame_buffer, const DrawCall& command, const ViewPort& viewport){
+    const Uniform uniform_buffer {
+        .model_mat = command.world_transform,
+        .proj_view_mat = command.vp_transform,
+        .material = command.material,
+    };
+    const auto frustum = extruct_frustum_planes(command.vp_transform);
+
+    for (std::uint32_t index_index = 0; index_index + 2 < command.index_buffer->size(); index_index += 3){
+        VertOut vertices[12];
+        for (std::uint32_t i = 0; i < 3; i++){
+            const std::uint32_t index = command.index_buffer->at(index_index + i);
+            const VertIn vertex_input = VertIn{
+                .model_pos = glm::vec4(command.vertex_buffer->at(index).world_position),
+                .texcoord = command.vertex_buffer->at(index).texcoord0,
+            };
+
+            vertices[i] = vertex_shader(vertex_input, uniform_buffer);
+        }
+
+        if (cull_triangle_by_world_aabb(
+            vertices[0].world_pos, 
+            vertices[1].world_pos, 
+            vertices[2].world_pos, 
+            frustum)) continue;
+
+        auto end = clip_triangle(vertices, vertices + 3);
+        for (auto triangle_begin = vertices; triangle_begin < end; triangle_begin += 3){
+            draw_triangle(frame_buffer, command, viewport, triangle_begin[0], triangle_begin[1], triangle_begin[2]);
         }
     }
 }
