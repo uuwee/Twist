@@ -76,7 +76,7 @@ static glm::mat4 get_cube_map_view_proj_matrix(const CubeMapIndex idx, const glm
 
 struct LightProbe {
     glm::vec3 position;
-    std::uint32_t resolution = 1024;
+    std::uint32_t resolution = 128;
     std::array<Renderer::Image<R8G8B8A8_U>, 6> irradiance_map;
     std::array<Texture<R8G8B8A8_U>, 6> radiance_map;
 };
@@ -110,6 +110,66 @@ void dump_light_probe(const LightProbe& probe, const std::filesystem::path& outp
         const std::filesystem::path path = output_dir / "rad" / std::to_string(i);
         const Renderer::Texture<Renderer::R8G8B8A8_U> tex = probe.radiance_map.at(i);
         ImageIO::dump_texture_to_ppm( tex, path);
+    }
+}
+
+glm::vec3 env_map_direction(size_t image_idx, glm::vec2 st){
+
+    float u = 2.0f * st.x - 1.0f;
+    float v = 2.0f * st.y - 1.0f;
+
+    glm::vec3 direction;
+
+    switch (static_cast<CubeMapIndex>(image_idx)) {
+        case CubeMapIndex::RIGHT:
+            direction = glm::vec3(1.0f, v, -u);
+            break;
+        case CubeMapIndex::LEFT:
+            direction = glm::vec3(-1.0f, v, u);
+            break;
+        case CubeMapIndex::UP:
+            direction = glm::vec3(u, 1.0f, -v);
+            break;
+        case CubeMapIndex::DOWN:
+            direction = glm::vec3(u, -1.0f, v);
+            break;
+        case CubeMapIndex::FRONT:
+            direction = glm::vec3(u, v, 1.0f);
+            break;
+        case CubeMapIndex::BACK:
+            direction = glm::vec3(-u, v, -1.0f);
+            break;
+        default:
+            direction = glm::vec3(0.0f);
+            break;
+    }    return glm::normalize(direction);
+};
+
+void diffuse_convolution (LightProbe* output_env_map, LightProbe* input_env_map){
+    if ((output_env_map->resolution != input_env_map->resolution)) {
+        std::cerr << "failed to convolut diffuse map\n";
+        return;
+    }
+
+    for (size_t i = 0; i < 6; i++){
+        std::cout << "convoluting env map face:" << i << "\n";
+        for (std::uint32_t y = 0; y < output_env_map->resolution; y++)
+        for (std::uint32_t x = 0; x < output_env_map->resolution; x++){
+            glm::vec4 sum = glm::vec4(0.f);
+            glm::vec3 N = env_map_direction( i, glm::vec2((float)y / output_env_map->resolution, (float)x / output_env_map->resolution));
+
+            for (size_t j = 0; j < 6; j++){
+                // std::cout << "gathering env map face:" << j << "\n";
+                for (std::uint32_t y1 = 0; y1 < input_env_map->resolution; y1++)
+                for (std::uint32_t x1 = 0; x1 < input_env_map->resolution; x1++){
+                    glm::vec3 L = env_map_direction( j, glm::vec2((float) y1 / input_env_map->resolution, (float) x1 / output_env_map->resolution));
+                    glm::vec4 I = to_vec4(input_env_map->radiance_map.at(i).mipmaps[0].at(x1, y1));
+                    sum += std::max(0.f, glm::dot(L, N)) * I;
+                }
+            }
+
+            output_env_map->radiance_map.at(i).mipmaps[0].at(x, y) = Renderer::to_r8g8b8a8_u(sum);
+        }
     }
 }
 
@@ -165,6 +225,14 @@ void draw_light_probe(LightProbe* probe, Scene& scene, Image<std::uint32_t>& sha
 
         Renderer::generate_mipmaps(&probe->radiance_map.at(i));
     }
+
+    std::cout << "finished radiance map";
+    // dump_light_probe(*probe, "./bin/probes");
+    LightProbe rad_env_map{};
+    init_light_probe(&rad_env_map, glm::vec3(0.f, 0.1f, 0.f));
+    diffuse_convolution (&rad_env_map, probe);
+    for (int i = 0; i < 6; i++) Renderer::generate_mipmaps(&rad_env_map.radiance_map.at(i));
+    dump_light_probe(rad_env_map, "./bin/probes");
 }
 
 int main() {
@@ -272,7 +340,7 @@ int main() {
     const glm::mat4 light_mat = shadow_proj * shadow_view;
     const glm::vec3 light_dir = glm::normalize(light_lookat - light_pos);
     draw_light_probe(&probe, scene, shadow_map, light_mat, light_dir);
-    dump_light_probe(probe, "./bin/probes/");
+    // dump_light_probe(probe, "./bin/probes/");
 
     while(running) {
         for (SDL_Event event; SDL_PollEvent(&event); ) switch (event.type)
